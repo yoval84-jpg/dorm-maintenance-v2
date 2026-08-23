@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Reparaciones</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0056b3">
+    <link rel="icon" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Reparaciones">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0; padding: 20px;
+            background-color: #f0f2f5;
+            position: relative;
+            min-height: 100vh;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px; height: 250px;
+            background-image: url('icon-512.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0.12;
+            z-index: -1;
+            pointer-events: none;
+        }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .task-card { background: #fdfdfd; margin-bottom: 12px; border-radius: 8px; border: 1px solid #e1e1e1; overflow: hidden; transition: all 0.2s; }
+        .task-header { padding: 15px; font-size: 18px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .task-header:hover { background: #f8f9fa; }
+        .task-actions { padding: 15px; background: #f8f9fa; border-top: 1px solid #eee; display: flex; gap: 10px; }
+        .btn { padding: 12px; border: none; border-radius: 6px; color: white; font-weight: bold; flex: 1; cursor: pointer; font-size: 16px; }
+        .btn-green { background-color: #198754; } .btn-green:hover { background-color: #157347; }
+        .btn-red { background-color: #dc3545; } .btn-red:hover { background-color: #bb2d3b; }
+        .btn-gray { background-color: #6c757d; }
+        .hidden { display: none !important; }
+        .first-task-card { border: 2px solid #0056b3; box-shadow: 0 4px 12px rgba(0,86,179,0.15); }
+        .first-task-card .task-header { cursor: default; background: #fff; font-weight: bold; color: #0056b3; font-size: 20px; }
+        .sync-indicator { font-size: 12px; color: #888; text-align: center; margin-bottom: 15px; }
+        .conn-error { font-size: 13px; color: #dc3545; text-align: center; margin-bottom: 15px; background: #fce8ea; border-radius: 8px; padding: 8px; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; box-sizing: border-box; }
+        textarea, input[type="file"] { width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; font-family: inherit; }
+        .thumb { max-width: 100%; border-radius: 8px; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Lista de Reparaciones</h2>
+        <div id="sync-indicator" class="sync-indicator hidden">🔄 Sincronizando...</div>
+        <div id="conn-error" class="conn-error hidden">No se pudo conectar. Verifica tu conexión.</div>
+        <div id="worker-list"></div>
+    </div>
+
+    <div class="modal hidden" id="cant-fix-modal">
+        <div class="modal-content">
+            <h3 style="color: #dc3545; text-align: center; margin-top:0;">⚠️ No se puede</h3>
+            <textarea id="worker-note" rows="3" placeholder="¿Qué pasó? (Opcional)"></textarea>
+            <div id="photo-preview-wrap"></div>
+            <input type="file" id="worker-img" accept="image/*" capture="environment">
+            <button class="btn btn-red" id="save-modal-btn" onclick="saveCantFix()" style="width:100%;">Guardar</button>
+            <button class="btn btn-gray" onclick="closeModal()" style="width:100%; margin-top:10px;">Cancelar</button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbxCgHhEWX7Vm9fn_Opq3YMdUaZdXZBOJBxY5IIBecuN-YEAgY5fNOBCvWoRox2E1djL0A/exec";
+        let tasks = [];
+        let currentTaskId = null;
+        let pendingPhoto = null;
+        let isSyncing = false;
+
+        function setSyncing(on) {
+            document.getElementById('sync-indicator').classList.toggle('hidden', !on);
+        }
+        function setConnError(on) {
+            document.getElementById('conn-error').classList.toggle('hidden', !on);
+        }
+
+        async function apiPost(payload) {
+            let result;
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                result = await res.json();
+            } catch (e) {
+                alert('Error de conexión: ' + e);
+                return { ok: false, error: String(e) };
+            }
+            if (!result || !result.ok) {
+                alert('Error del servidor: ' + (result && result.error ? result.error : 'desconocido'));
+            }
+            return result;
+        }
+
+        async function syncFromCloud() {
+            if (isSyncing) return;
+            isSyncing = true;
+            setSyncing(true);
+            try {
+                const res = await fetch(API_URL);
+                const data = await res.json();
+                if (data && data.ok) {
+                    tasks = data.tasks;
+                    setConnError(false);
+                    renderWorker();
+                } else {
+                    setConnError(true);
+                }
+            } catch (e) {
+                setConnError(true);
+            }
+            setSyncing(false);
+            isSyncing = false;
+        }
+
+        function getDaysWaiting(task) {
+            const days = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+            return days <= 0 ? 'Hoy' : `Hace ${days} día${days > 1 ? 's' : ''}`;
+        }
+
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        function renderWorker() {
+            const list = document.getElementById('worker-list');
+            const activeTasks = tasks.filter(t => t.status === 'active')
+                .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+            if (activeTasks.length === 0) {
+                list.innerHTML = '<h3 style="text-align:center; color:#888;">No hay tareas 🎉</h3>';
+                return;
+            }
+
+            list.innerHTML = activeTasks.map((task, index) => {
+                const isFirst = index === 0;
+                const daysText = getDaysWaiting(task);
+                const text = task.textEs || task.textHe;
+                return `
+                    <div class="task-card ${isFirst ? 'first-task-card' : ''}">
+                        <div class="task-header" ${isFirst ? '' : `onclick="toggleCard('${task.id}')"`}>
+                            <div>
+                                🔧 ${esc(text)}<br>
+                                <span style="font-size: 13px; color: #888; font-weight: normal;">⏳ ${daysText}</span>
+                            </div>
+                            ${isFirst ? '' : '<span>🔽</span>'}
+                        </div>
+                        <div class="task-actions ${isFirst ? '' : 'hidden'}" id="actions-${task.id}">
+                            <button class="btn btn-green" onclick="markFixed('${task.id}')">✅ Reparado</button>
+                            <button class="btn btn-red" onclick="openCantFix('${task.id}')">⚠️ No se puede</button>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function toggleCard(id) {
+            const target = document.getElementById(`actions-${id}`);
+            const isHidden = target.classList.contains('hidden');
+            document.querySelectorAll('.task-actions').forEach(el => el.classList.add('hidden'));
+            if (isHidden) target.classList.remove('hidden');
+        }
+
+        async function markFixed(id) {
+            await apiPost({ action: 'markFixed', id });
+            await syncFromCloud();
+        }
+
+        function openCantFix(id) {
+            currentTaskId = id;
+            pendingPhoto = null;
+            document.getElementById('worker-note').value = '';
+            document.getElementById('worker-img').value = '';
+            document.getElementById('photo-preview-wrap').innerHTML = '';
+            document.getElementById('cant-fix-modal').classList.remove('hidden');
+        }
+        function closeModal() {
+            document.getElementById('cant-fix-modal').classList.add('hidden');
+        }
+
+        document.getElementById('worker-img').addEventListener('change', function (e) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (ev) {
+                const img = new Image();
+                img.onload = function () {
+                    const scale = Math.min(400 / img.width, 1);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    pendingPhoto = canvas.toDataURL('image/jpeg', 0.5);
+                    document.getElementById('photo-preview-wrap').innerHTML = `<img class="thumb" src="${pendingPhoto}">`;
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        async function saveCantFix() {
+            const reasonTextEs = document.getElementById('worker-note').value.trim();
+            const btn = document.getElementById('save-modal-btn');
+            btn.disabled = true;
+            btn.innerText = 'Guardando...';
+
+            const payload = { action: 'reportIssue', id: currentTaskId, reasonTextEs };
+            if (pendingPhoto) payload.reasonPhotoBase64 = pendingPhoto;
+            await apiPost(payload);
+
+            btn.disabled = false;
+            btn.innerText = 'Guardar';
+            closeModal();
+            await syncFromCloud();
+        }
+
+        window.onload = () => { syncFromCloud(); };
+        setInterval(syncFromCloud, 10000);
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+    </script>
+</body>
+</html>

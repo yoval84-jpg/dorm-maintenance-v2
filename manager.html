@@ -80,10 +80,12 @@
         <div id="conn-error" class="conn-error hidden">לא ניתן להתחבר. יש לבדוק את חיבור האינטרנט.</div>
 
         <textarea id="task-input" rows="4" placeholder="הכנס משימות (כל שורה = משימה נפרדת)"></textarea>
-        <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px; cursor: pointer; font-weight: bold; background:none; border:none; padding:0; width:auto; color:#333;">
-            <input type="checkbox" id="require-verification" style="width: 20px; margin: 0;">
-            🔍 דרוש וידוא מנהל לאחר ביצוע
+        <p style="font-size:12px; color:#888; margin:-8px 0 12px; text-align:center;">🔍 כל משימה תדרוש אישור מנהל אחרי ביצוע</p>
+        <label class="photo-picker" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border:1.5px dashed #ccc; border-radius:8px; color:#888; font-weight:normal; margin-bottom:15px; cursor:pointer;">
+            <span id="add-photo-label">📷 צרף תמונה (לא חובה)</span>
+            <input type="file" id="add-photo-input" accept="image/*" capture="environment" style="display:none;">
         </label>
+        <div id="add-photo-preview-wrap"></div>
         <button class="btn-blue" id="add-btn" onclick="addTasks()">תרגם והוסף משימות</button>
 
         <h3 style="border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 30px;">משימות פעילות (ניתן לגרור)</h3>
@@ -176,19 +178,45 @@
             return days <= 0 ? 'Hoy' : `Hace ${days} día${days > 1 ? 's' : ''}`;
         }
 
+        let addPendingPhoto = null;
+        document.getElementById('add-photo-input').addEventListener('change', function (e) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (ev) {
+                const img = new Image();
+                img.onload = function () {
+                    const scale = Math.min(400 / img.width, 1);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    addPendingPhoto = canvas.toDataURL('image/jpeg', 0.5);
+                    document.getElementById('add-photo-preview-wrap').innerHTML = `<img src="${addPendingPhoto}" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
+                    document.getElementById('add-photo-label').innerText = '📷 תמונה צורפה (לחץ להחלפה)';
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
         async function addTasks() {
             const input = document.getElementById('task-input').value.trim();
-            const reqVerify = document.getElementById('require-verification').checked;
             if (!input) return;
             const lines = input.split('\n').map(l => l.trim()).filter(l => l !== '');
             const btn = document.getElementById('add-btn');
             btn.disabled = true;
             btn.innerText = 'מתרגם ומוסיף...';
 
-            await apiPost({ action: 'addBulk', lines, requiresConfirmation: reqVerify });
+            const payload = { action: 'addBulk', lines };
+            if (addPendingPhoto) payload.photoBase64 = addPendingPhoto;
+            await apiPost(payload);
 
             document.getElementById('task-input').value = '';
-            document.getElementById('require-verification').checked = false;
+            document.getElementById('add-photo-input').value = '';
+            document.getElementById('add-photo-preview-wrap').innerHTML = '';
+            document.getElementById('add-photo-label').innerText = '📷 צרף תמונה (לא חובה)';
+            addPendingPhoto = null;
             btn.disabled = false;
             btn.innerText = 'תרגם והוסף משימות';
             await syncFromCloud();
@@ -209,7 +237,7 @@
                 const waitText = getDaysWaitingHe(task);
                 let html = `<li data-id="${task.id}">
                     <div><strong>${esc(task.textHe)}</strong><br><span style="font-size:12px; color:#666;">⏳ ${esc(waitText)}</span>`;
-                if (task.requiresConfirmation) html += `<br><span class="badge badge-orange" style="margin-top:5px;">דורש וידוא</span>`;
+                if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px;">`;
                 html += `</div>
                     <div class="row-actions-col">
                         <button class="btn-red thumb-btn" style="background:#dc3545;color:#fff;" onclick="deleteTask('${task.id}')">מחק</button>

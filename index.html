@@ -144,15 +144,20 @@
                 const isFirst = index === 0;
                 const daysText = getDaysWaiting(task);
                 const text = task.textEs || task.textHe;
+                const photoHtml = task.reasonPhotoBase64
+                    ? `<img src="${task.reasonPhotoBase64}" class="thumb" style="margin-top:10px;">`
+                    : '';
                 return `
                     <div class="task-card ${isFirst ? 'first-task-card' : ''}">
                         <div class="task-header" ${isFirst ? '' : `onclick="toggleCard('${task.id}')"`}>
                             <div>
                                 🔧 ${esc(text)}<br>
                                 <span style="font-size: 13px; color: #888; font-weight: normal;">⏳ ${daysText}</span>
+                                ${isFirst ? photoHtml : ''}
                             </div>
                             ${isFirst ? '' : '<span>🔽</span>'}
                         </div>
+                        ${!isFirst && task.reasonPhotoBase64 ? `<div style="padding:0 15px;">${photoHtml}</div>` : ''}
                         <div class="task-actions ${isFirst ? '' : 'hidden'}" id="actions-${task.id}">
                             <button class="btn btn-green" onclick="markFixed('${task.id}')">✅ Reparado</button>
                             <button class="btn btn-red" onclick="openCantFix('${task.id}')">⚠️ No se puede</button>

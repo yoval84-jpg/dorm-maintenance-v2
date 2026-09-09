@@ -160,7 +160,9 @@
             if (elDone) elDone.innerText = countDone;
 
             if (activeTasks.length === 0) {
-                list.innerHTML = '<h3 style="text-align:center; color:#888;">No hay tareas 🎉</h3>';
+                list.innerHTML = `<div style="text-align:center; padding:25px; background:#f8f9fa; border-radius:8px; border:1px solid #ddd; color:#198754; font-weight:bold; font-size:16px;">
+                    כל הכבוד! נגמרו המשימות הדחופות!<br><span style="font-size:13px; color:#666; font-weight:normal;">כל הכבוד, רק צריך לראות שחיים עומד בקצב</span>
+                </div>`;
                 return;
             }
             list.innerHTML = activeTasks.map((task, index) => {
@@ -236,7 +238,7 @@
         });
 
         async function saveCantFix() {
-            const reasonTextEs = document.getElementById('worker-note').value.trim();
+            const reasonTextEs = document.getElementById('worker-note'].value.trim();
             const btn = document.getElementById('save-modal-btn');
             btn.disabled = true;
             btn.innerText = 'Guardando...';

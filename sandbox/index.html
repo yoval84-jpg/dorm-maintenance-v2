@@ -90,6 +90,17 @@
             document.getElementById('conn-error').classList.toggle('hidden', !on);
         }
 
+        // פונקציית אימוג'ים חכמים
+        function applySmartEmojis(text) {
+            let res = text;
+            if (/(מים|נזילה|פיצוץ|ברז|אסלה|שירותים|מקלחת|כיור|ביוב|צינור)/i.test(res)) res = '💧 ' + res;
+            if (/(חשמל|שקע|תקע|מנורה|אור|כבל|קצר|מתג|נורה|פחת)/i.test(res)) res = '⚡ ' + res;
+            if (/(דחוף|בהול|סכנה|מיידי)/i.test(res)) res = '🔥 ' + res;
+            if (/(מזגן|מיזוג|שלט מזגן|קור|חימום)/i.test(res)) res = '❄️ ' + res;
+            if (/(דלת|חלון|מנעול|ציר|ידית|מפתח)/i.test(res)) res = '🚪 ' + res;
+            return res;
+        }
+
         async function apiPost(payload) {
             let result;
             try {
@@ -169,6 +180,8 @@
                 const isFirst = index === 0;
                 const daysText = getDaysWaiting(task);
                 const text = task.textEs || task.textHe;
+                const textWithEmoji = applySmartEmojis(esc(text)); // הוספת אימוג'י
+
                 const photoHtml = task.reasonPhotoBase64
                     ? `<img src="${task.reasonPhotoBase64}" class="thumb" style="margin-top:10px;">`
                     : '';
@@ -176,7 +189,7 @@
                     <div class="task-card ${isFirst ? 'first-task-card' : ''}">
                         <div class="task-header" ${isFirst ? '' : `onclick="toggleCard('${task.id}')"`}>
                             <div>
-                                ${esc(text)}<br>
+                                ${textWithEmoji}<br>
                                 <span style="font-size: 13px; color: #888; font-weight: normal;"> ${daysText}</span>
                                 ${isFirst ? photoHtml : ''}
                             </div>
@@ -238,7 +251,7 @@
         });
 
         async function saveCantFix() {
-            const reasonTextEs = document.getElementById('worker-note'].value.trim();
+            const reasonTextEs = document.getElementById('worker-note').value.trim();
             const btn = document.getElementById('save-modal-btn');
             btn.disabled = true;
             btn.innerText = 'Guardando...';

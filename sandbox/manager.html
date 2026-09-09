@@ -37,7 +37,7 @@
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); position: relative; }
         .hidden { display: none !important; }
         h2, h3 { text-align: center; color: #333; margin-top: 0; }
-        textarea, button { width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; font-family: inherit; }
+        textarea, input[type="text"], button { width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; font-family: inherit; }
         button { cursor: pointer; font-weight: bold; border: none; color: white; transition: 0.2s; }
         .btn-blue { background-color: #0056b3; } .btn-blue:hover { background-color: #004494; }
         .btn-gray { background-color: #6c757d; } .btn-gray:hover { background-color: #5a6268; }
@@ -51,10 +51,7 @@
         .drag-handle { font-size: 24px; color: #adb5bd; cursor: grab; user-select: none; }
         .sortable-ghost { opacity: 0.4; background-color: #f8f9fa; }
         .toggle-history-btn { background: transparent; color: #333; font-size: 22px; width: auto; margin: 0; padding: 5px; border: none; box-shadow: none; border-radius: 50%; }
-        .sync-indicator { font-size: 12px; color: #888; text-align: center; margin-bottom: 15px; }
         .conn-error { font-size: 13px; color: #dc3545; text-align: center; margin-bottom: 15px; background: #fce8ea; border-radius: 8px; padding: 8px; }
-        .action-row { display: flex; gap: 8px; }
-        .action-row button { width: auto; flex: none; padding: 8px 14px; margin: 0; }
         .row-actions-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
         .thumb-btn { width: auto; background: transparent; color: #333; padding: 5px 10px; margin: 0; box-shadow: none; }
         .task-card { background: #fdfdfd; margin-bottom: 12px; border-radius: 8px; border: 1px solid #e1e1e1; overflow: hidden; }
@@ -63,6 +60,7 @@
         .task-actions .btn { padding: 12px; border: none; border-radius: 6px; color: white; font-weight: bold; flex: 1; cursor: pointer; font-size: 16px; }
         .first-task-card { border: 2px solid #0056b3; box-shadow: 0 4px 12px rgba(0,86,179,0.15); }
         .first-task-card .task-header { font-size: 20px; font-weight: bold; color: #0056b3; }
+        .empty-state-box { text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px dashed #ccc; color: #555; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -78,8 +76,9 @@
             <div><strong id="stat-done" style="font-size:20px; color:#198754;">0</strong><br><span style="font-size:12px; color:#666;">טופלו היום</span></div>
         </div>
 
-        <textarea id="task-input" rows="4" placeholder="הכנס תיאור משימה (כל שורה תהפוך למשימה נפרדת)"></textarea>
-        <p style="font-size:12px; color:#888; margin:-8px 0 12px; text-align:center;">הזן טקסט בעברית, המערכת תתרגם לספרדית לעובד</p>
+        <textarea id="task-input" rows="3" placeholder="הכנס תיאור משימה (כל שורה תהפוך למשימה נפרדת)"></textarea>
+        <input type="text" id="location-input" placeholder="מיקום/חדר (אופציונלי)">
+        <p style="font-size:12px; color:#888; margin:-8px 0 12px; text-align:center;">הזן טקסט בעברית, המערכת תוסיף אימוג'י חכם ותתרגם לספרדית לעובד</p>
         
         <label class="photo-picker" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border:1.5px dashed #ccc; border-radius:8px; color:#888; font-weight:normal; margin-bottom:15px; cursor:pointer;">
             <span id="add-photo-label">הוסף תמונה (אופציונלי)</span>
@@ -89,6 +88,7 @@
         <button class="btn-blue" id="add-btn" onclick="addTasks()">הוסף משימות</button>
 
         <h3 style="border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 30px;">משימות פעילות (ניתן לגרור לשינוי סדר)</h3>
+        <div id="manager-empty-box" class="empty-state-box hidden"></div>
         <ul id="list-active" class="manager-list"></ul>
 
         <h3 style="border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 30px; color: #fd7e14;">ממתינות לאישור / בעיות מדווחות</h3>
@@ -201,8 +201,15 @@
         });
 
         async function addTasks() {
-            const input = document.getElementById('task-input').value.trim();
+            let input = document.getElementById('task-input').value.trim();
+            const location = document.getElementById('location-input').value.trim();
             if (!input) return;
+
+            // הוספת מיקום לטקסט אם הוזן
+            if (location) {
+                input = input.split('\n').map(l => `[${location}] ${l}`).join('\n');
+            }
+
             const lines = input.split('\n').map(l => l.trim()).filter(l => l !== '');
             const btn = document.getElementById('add-btn');
             btn.disabled = true;
@@ -211,6 +218,7 @@
             if (addPendingPhoto) payload.photoBase64 = addPendingPhoto;
             await apiPost(payload);
             document.getElementById('task-input').value = '';
+            document.getElementById('location-input').value = '';
             document.getElementById('add-photo-input').value = '';
             document.getElementById('add-photo-preview-wrap').innerHTML = '';
             document.getElementById('add-photo-label').innerText = 'הוסף תמונה';
@@ -224,6 +232,8 @@
             const listActive = document.getElementById('list-active');
             const listPending = document.getElementById('list-pending');
             const listHistory = document.getElementById('list-history');
+            const emptyBox = document.getElementById('manager-empty-box');
+
             const active = tasks.filter(t => t.status === 'active').sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
             const pending = tasks.filter(t => t.status === 'pending_confirm' || t.status === 'issue_pending')
                 .sort((a,b)=> new Date(b.completedAt) - new Date(a.completedAt));
@@ -249,19 +259,27 @@
             if(statPending) statPending.innerText = pending.length;
             if(statDone) statDone.innerText = countDone;
 
-            listActive.innerHTML = active.map(task => {
-                const waitText = getDaysWaitingHe(task);
-                let html = `<li data-id="${task.id}">
-                    <div><strong>${esc(task.textHe)}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span>`;
-                if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px;">`;
-                html += `</div>
-                    <div class="row-actions-col">
-                        <button class="btn-red thumb-btn" style="background:#dc3545;color:#fff;" onclick="deleteTask('${task.id}')">🗑️</button>
-                        <div class="drag-handle">≡</div>
-                    </div>
-                </li>`;
-                return html;
-            }).join('');
+            // הודעה מותאמת אישית אם נגמרו המשימות הפעילות
+            if (active.length === 0) {
+                emptyBox.innerHTML = `<strong>וואו! נגמרו המשימות</strong><br><span style="font-size:13px; color:#666;">שווה לערוך בדיקה מה עוד צריך תיקון או להעלות משימות רוחב.</span>`;
+                emptyBox.classList.remove('hidden');
+                listActive.innerHTML = '';
+            } else {
+                emptyBox.classList.add('hidden');
+                listActive.innerHTML = active.map(task => {
+                    const waitText = getDaysWaitingHe(task);
+                    let html = `<li data-id="${task.id}">
+                        <div><strong>${esc(task.textHe)}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span>`;
+                    if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px;">`;
+                    html += `</div>
+                        <div class="row-actions-col">
+                            <button class="btn-red thumb-btn" style="background:#dc3545;color:#fff;" onclick="deleteTask('${task.id}')">🗑️</button>
+                            <div class="drag-handle">≡</div>
+                        </div>
+                    </li>`;
+                    return html;
+                }).join('');
+            }
 
             listPending.innerHTML = pending.map(task => {
                 const waitText = getDaysWaitingHe(task);
@@ -296,20 +314,22 @@
             }).join('');
 
             if (activeSortable) activeSortable.destroy();
-            activeSortable = Sortable.create(listActive, {
-                animation: 150,
-                handle: '.drag-handle',
-                ghostClass: 'sortable-ghost',
-                onEnd: async function () {
-                    const ids = Array.from(listActive.children).map(li => li.dataset.id);
-                    ids.forEach((id, i) => {
-                        const t = tasks.find(x => x.id === id);
-                        if (t) t.order = i;
-                    });
-                    const result = await apiPost({ action: 'reorder', ids });
-                    if (!result || !result.ok) await syncFromCloud();
-                }
-            });
+            if (active.length > 0) {
+                activeSortable = Sortable.create(listActive, {
+                    animation: 150,
+                    handle: '.drag-handle',
+                    ghostClass: 'sortable-ghost',
+                    onEnd: async function () {
+                        const ids = Array.from(listActive.children).map(li => li.dataset.id);
+                        ids.forEach((id, i) => {
+                            const t = tasks.find(x => x.id === id);
+                            if (t) t.order = i;
+                        });
+                        const result = await apiPost({ action: 'reorder', ids });
+                        if (!result || !result.ok) await syncFromCloud();
+                    }
+                });
+            }
         }
 
         function maxActiveOrder_() {
@@ -370,7 +390,9 @@
             const list = document.getElementById('preview-list');
             const active = tasks.filter(t => t.status === 'active').sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
             if (active.length === 0) {
-                list.innerHTML = '<h3 style="text-align:center; color:#888;">No hay tareas</h3>';
+                list.innerHTML = `<div style="text-align:center; padding:20px; background:#fff; border-radius:8px; border:1px solid #ddd; color:#198754; font-weight:bold;">
+                    כל הכבוד! נגמרו המשימות הדחופות!<br><span style="font-size:12px; color:#666; font-weight:normal;">רק צריך לראות שחיים עומד בקצב</span>
+                </div>`;
                 return;
             }
             list.innerHTML = active.map((task, index) => {

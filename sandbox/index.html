@@ -58,13 +58,20 @@
     <div class="container">
         <h2>Lista de Reparaciones</h2>
         <div id="conn-error" class="conn-error hidden">No se pudo conectar. Verifica tu conexión.</div>
+        
+        <!-- דאשבורד נתונים לעובד -->
+        <div style="display:flex; justify-content:space-around; text-align:center; background:#e9ecef; padding:12px; border-radius:8px; margin-bottom:15px; border:1px solid #dee2e6;">
+            <div><strong id="w-stat-active" style="font-size:18px; color:#0056b3;">0</strong><br><span style="font-size:12px; color:#555;">Pendientes (לטיפול)</span></div>
+            <div><strong id="w-stat-done" style="font-size:18px; color:#198754;">0</strong><br><span style="font-size:12px; color:#555;">Hecho hoy (טופלו היום)</span></div>
+        </div>
+
         <div id="worker-list"></div>
     </div>
 
     <div class="modal hidden" id="cant-fix-modal">
         <div class="modal-content">
-            <h3 style="color: #dc3545; text-align: center; margin-top:0;">⚠️ No se puede</h3>
-            <textarea id="worker-note" rows="3" placeholder="¿Qué pasó? (Opcional)"></textarea>
+            <h3 style="color: #dc3545; text-align: center; margin-top:0;">❌ No se puede</h3>
+            <textarea id="worker-note" rows="3" placeholder="Que pasó? (Opcional)"></textarea>
             <div id="photo-preview-wrap"></div>
             <input type="file" id="worker-img" accept="image/*" capture="environment">
             <button class="btn btn-red" id="save-modal-btn" onclick="saveCantFix()" style="width:100%;">Guardar</button>
@@ -123,7 +130,7 @@
 
         function getDaysWaiting(task) {
             const days = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-            return days <= 0 ? 'Hoy' : `Hace ${days} día${days > 1 ? 's' : ''}`;
+            return days <= 0 ? 'Hoy' : `Hace ${days} d a${days > 1 ? 's' : ''}`;
         }
 
         function esc(s) {
@@ -135,11 +142,27 @@
             const activeTasks = tasks.filter(t => t.status === 'active')
                 .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 
+            // חישוב שעת ההתחלה של היום (7:30 בבוקר)
+            const today730 = new Date();
+            today730.setHours(7, 30, 0, 0);
+            if (new Date() < today730) today730.setDate(today730.getDate() - 1);
+
+            // ספירת משימות שטופלו היום
+            const countDone = tasks.filter(t => 
+                (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && 
+                t.completedAt && new Date(t.completedAt) >= today730
+            ).length;
+
+            // עדכון המספרים בדאשבורד
+            const elActive = document.getElementById('w-stat-active');
+            const elDone = document.getElementById('w-stat-done');
+            if (elActive) elActive.innerText = activeTasks.length;
+            if (elDone) elDone.innerText = countDone;
+
             if (activeTasks.length === 0) {
                 list.innerHTML = '<h3 style="text-align:center; color:#888;">No hay tareas 🎉</h3>';
                 return;
             }
-
             list.innerHTML = activeTasks.map((task, index) => {
                 const isFirst = index === 0;
                 const daysText = getDaysWaiting(task);
@@ -151,16 +174,16 @@
                     <div class="task-card ${isFirst ? 'first-task-card' : ''}">
                         <div class="task-header" ${isFirst ? '' : `onclick="toggleCard('${task.id}')"`}>
                             <div>
-                                🔧 ${esc(text)}<br>
-                                <span style="font-size: 13px; color: #888; font-weight: normal;">⏳ ${daysText}</span>
+                                ${esc(text)}<br>
+                                <span style="font-size: 13px; color: #888; font-weight: normal;"> ${daysText}</span>
                                 ${isFirst ? photoHtml : ''}
                             </div>
-                            ${isFirst ? '' : '<span>🔽</span>'}
+                            ${isFirst ? '' : '<span>▼</span>'}
                         </div>
                         ${!isFirst && task.reasonPhotoBase64 ? `<div style="padding:0 15px;">${photoHtml}</div>` : ''}
                         <div class="task-actions ${isFirst ? '' : 'hidden'}" id="actions-${task.id}">
                             <button class="btn btn-green" onclick="markFixed('${task.id}')">✅ Reparado</button>
-                            <button class="btn btn-red" onclick="openCantFix('${task.id}')">⚠️ No se puede</button>
+                            <button class="btn btn-red" onclick="openCantFix('${task.id}')">❌ No se puede</button>
                         </div>
                     </div>`;
             }).join('');
@@ -174,11 +197,9 @@
         }
 
         async function markFixed(id) {
-            // עדכון מיידי במסך, בלי לחכות לשרת
-            tasks = tasks.filter(t => t.id !== id);
             renderWorker();
             const result = await apiPost({ action: 'markFixed', id });
-            if (!result || !result.ok) await syncFromCloud(); // רק בכישלון - מתקנים בחזרה
+            if (!result || !result.ok) await syncFromCloud(); 
         }
 
         function openCantFix(id) {
@@ -189,6 +210,7 @@
             document.getElementById('photo-preview-wrap').innerHTML = '';
             document.getElementById('cant-fix-modal').classList.remove('hidden');
         }
+
         function closeModal() {
             document.getElementById('cant-fix-modal').classList.add('hidden');
         }
@@ -218,24 +240,19 @@
             const btn = document.getElementById('save-modal-btn');
             btn.disabled = true;
             btn.innerText = 'Guardando...';
-
             const payload = { action: 'reportIssue', id: currentTaskId, reasonTextEs };
             if (pendingPhoto) payload.reasonPhotoBase64 = pendingPhoto;
-
-            // עדכון מיידי במסך
-            tasks = tasks.filter(t => t.id !== currentTaskId);
             renderWorker();
             closeModal();
             btn.disabled = false;
             btn.innerText = 'Guardar';
-
             const result = await apiPost(payload);
             if (!result || !result.ok) await syncFromCloud();
         }
 
         window.onload = () => { syncFromCloud(); };
         setInterval(syncFromCloud, 10000);
-        if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+        // if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
     </script>
 </body>
 </html>

@@ -44,7 +44,7 @@
         .btn-green { background-color: #198754; } .btn-green:hover { background-color: #157347; }
         .btn-red { background-color: #dc3545; } .btn-red:hover { background-color: #bb2d3b; }
         .manager-list { list-style: none; padding: 0; }
-        .manager-list li { background: #fff; border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .manager-list li { padding: 15px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; transition: all 0.3s;}
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; margin-bottom: 5px; }
         .badge-green { background: #198754; } .badge-red { background: #dc3545; } .badge-orange { background: #fd7e14; }
         .task-img { max-width: 100%; border-radius: 8px; margin-top: 10px; }
@@ -74,6 +74,7 @@
             <div><strong id="stat-active" style="font-size:20px; color:#0056b3;">0</strong><br><span style="font-size:12px; color:#666;">מחכות לטיפול</span></div>
             <div><strong id="stat-pending" style="font-size:20px; color:#fd7e14;">0</strong><br><span style="font-size:12px; color:#666;">ממתינות לאישור</span></div>
             <div><strong id="stat-done" style="font-size:20px; color:#198754;">0</strong><br><span style="font-size:12px; color:#666;">טופלו היום</span></div>
+            <div><strong id="stat-avg" style="font-size:20px; color:#6f42c1;">0</strong><br><span style="font-size:12px; color:#666;">ימים בממוצע</span></div>
         </div>
 
         <textarea id="task-input" rows="3" placeholder="הכנס תיאור משימה (כל שורה תהפוך למשימה נפרדת)"></textarea>
@@ -95,8 +96,11 @@
         <ul id="list-pending" class="manager-list"></ul>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-top: 30px; padding-bottom: 5px;">
-            <h3 style="margin: 0; color: #6c757d; border: none; padding: 0;">היסטוריה (אחרונות שהושלמו)</h3>
-            <button class="toggle-history-btn" onclick="document.getElementById('list-history').classList.toggle('hidden')">⬇️</button>
+            <h3 style="margin: 0; color: #6c757d; border: none; padding: 0;">היסטוריה </h3>
+            <div style="display: flex; gap:10px;">
+                <button class="btn-gray" onclick="exportCSV()" style="width:auto; padding:5px 10px; margin:0; font-size:12px; background:#198754;">📥 הפק דוח</button>
+                <button class="toggle-history-btn" onclick="document.getElementById('list-history').classList.toggle('hidden')">⬇️</button>
+            </div>
         </div>
         <ul id="list-history" class="manager-list hidden"></ul>
     </div>
@@ -121,6 +125,39 @@
         }
         function esc(s) {
             return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        // פונקציית אימוג'ים חכמים
+        function applySmartEmojis(text) {
+            let res = text;
+            if (/(מים|נזילה|פיצוץ|ברז|אסלה|שירותים|מקלחת|כיור|ביוב|צינור)/i.test(res)) res = '💧 ' + res;
+            if (/(חשמל|שקע|תקע|מנורה|אור|כבל|קצר|מתג|נורה|פחת)/i.test(res)) res = '⚡ ' + res;
+            if (/(דחוף|בהול|סכנה|מיידי)/i.test(res)) res = '🔥 ' + res;
+            if (/(מזגן|מיזוג|שלט מזגן|קור|חימום)/i.test(res)) res = '❄️ ' + res;
+            if (/(דלת|חלון|מנעול|ציר|ידית|מפתח)/i.test(res)) res = '🚪 ' + res;
+            return res;
+        }
+
+        // הפקת דוח CSV
+        function exportCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // תמיכה בעברית באקסל
+            csvContent += "ID,תיאור משימה,סטטוס,תאריך יצירה,תאריך סיום,הערות לעיכוב\n";
+            tasks.forEach(t => {
+                const id = t.id || '';
+                const text = `"${esc(t.textHe).replace(/"/g, '""')}"`;
+                const status = t.status === 'active' ? 'פעיל' : t.status === 'archived' ? 'הושלם' : t.status === 'issue_pending' ? 'דווחה בעיה' : 'ממתין לאישור';
+                const created = t.createdAt ? new Date(t.createdAt).toLocaleString('he-IL') : '';
+                const completed = t.completedAt ? new Date(t.completedAt).toLocaleString('he-IL') : '';
+                const reason = t.reasonText ? `"${esc(t.reasonText).replace(/"/g, '""')}"` : '';
+                csvContent += `${id},${text},${status},${created},${completed},${reason}\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "דוח_תקלות_מעונות.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         async function apiPost(payload) {
@@ -205,7 +242,6 @@
             const location = document.getElementById('location-input').value.trim();
             if (!input) return;
 
-            // הוספת מיקום לטקסט אם הוזן
             if (location) {
                 input = input.split('\n').map(l => `[${location}] ${l}`).join('\n');
             }
@@ -251,13 +287,28 @@
                 t.completedAt && new Date(t.completedAt) >= today730
             ).length;
 
+            // חישוב זמן ממוצע למשימות שהושלמו (ב-30 הימים האחרונים למשל, או הכל)
+            const completedTasks = tasks.filter(t => t.status === 'archived' || t.status === 'pending_confirm').filter(t => t.completedAt && t.createdAt);
+            let totalTime = 0; let validCount = 0;
+            completedTasks.forEach(t => {
+                const created = new Date(t.createdAt).getTime();
+                const completed = new Date(t.completedAt).getTime();
+                if (completed > created) {
+                    totalTime += (completed - created);
+                    validCount++;
+                }
+            });
+            const avgDays = validCount > 0 ? (totalTime / validCount / (1000 * 60 * 60 * 24)).toFixed(1) : 0;
+
             // עדכון המספרים במסך המנהל
             const statActive = document.getElementById('stat-active');
             const statPending = document.getElementById('stat-pending');
             const statDone = document.getElementById('stat-done');
+            const statAvg = document.getElementById('stat-avg');
             if(statActive) statActive.innerText = active.length;
             if(statPending) statPending.innerText = pending.length;
             if(statDone) statDone.innerText = countDone;
+            if(statAvg) statAvg.innerText = avgDays;
 
             // הודעה מותאמת אישית אם נגמרו המשימות הפעילות
             if (active.length === 0) {
@@ -267,9 +318,14 @@
             } else {
                 emptyBox.classList.add('hidden');
                 listActive.innerHTML = active.map(task => {
+                    const waitDays = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+                    const isRedAlert = waitDays > 3; // התראת משימות אדומות
+                    const cardStyle = isRedAlert ? 'background:#fff5f5; border:1px solid #ffcaca;' : 'background:#fff; border:1px solid #ddd;';
                     const waitText = getDaysWaitingHe(task);
-                    let html = `<li data-id="${task.id}">
-                        <div><strong>${esc(task.textHe)}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span>`;
+                    const textWithEmoji = applySmartEmojis(esc(task.textHe)); // הוספת אימוג'י
+                    
+                    let html = `<li data-id="${task.id}" style="${cardStyle}">
+                        <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:${isRedAlert ? '#dc3545' : '#666'}; font-weight:${isRedAlert ? 'bold' : 'normal'};">המתנה: ${esc(waitText)}</span>`;
                     if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px;">`;
                     html += `</div>
                         <div class="row-actions-col">
@@ -283,11 +339,12 @@
 
             listPending.innerHTML = pending.map(task => {
                 const waitText = getDaysWaitingHe(task);
+                const textWithEmoji = applySmartEmojis(esc(task.textHe));
                 const isIssue = task.status === 'issue_pending';
                 const badgeClass = isIssue ? 'badge-red' : 'badge-green';
                 const badgeText = isIssue ? 'דווחה בעיה' : 'ממתין לאישור';
-                let html = `<li>
-                    <div><strong>${esc(task.textHe)}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
+                let html = `<li style="background:#fff; border:1px solid #ddd;">
+                    <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
                     <span class="badge ${badgeClass}" style="margin-top:5px;">${badgeText}</span>`;
                 if (task.reasonText) html += `<p style="margin:5px 0; font-size:13px; background:#f0f0f0; padding:6px; border-radius:4px;">הערה: ${esc(task.reasonText)}</p>`;
                 if (task.reasonPhotoBase64) html += `<img src="${task.reasonPhotoBase64}" class="task-img">`;
@@ -306,8 +363,9 @@
 
             listHistory.innerHTML = history.map(task => {
                 const waitText = getDaysWaitingHe(task);
-                return `<li>
-                    <div><strong>${esc(task.textHe)}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
+                const textWithEmoji = applySmartEmojis(esc(task.textHe));
+                return `<li style="background:#fff; border:1px solid #ddd;">
+                    <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
                     <span class="badge badge-green" style="margin-top:5px;">הושלם</span></div>
                     <button class="btn-gray thumb-btn" style="background:#6c757d;color:#fff;" onclick="undoHistory('${task.id}')">↩️</button>
                 </li>`;
@@ -399,11 +457,13 @@
                 const isFirst = index === 0;
                 const daysText = getDaysWaitingEs(task);
                 const text = task.textEs || task.textHe;
+                const textWithEmoji = applySmartEmojis(esc(text));
+                
                 return `
                     <div class="task-card ${isFirst ? 'first-task-card' : ''}">
                         <div class="task-header" ${isFirst ? '' : `onclick="this.nextElementSibling.classList.toggle('hidden')"`} style="cursor: ${isFirst ? 'default' : 'pointer'};">
                             <div>
-                                ${esc(text)}<br>
+                                ${textWithEmoji}<br>
                                 <span style="font-size: 13px; color: #888; font-weight: normal;"> ${daysText}</span>
                             </div>
                             ${isFirst ? '' : '<span>▼</span>'}

@@ -1,17 +1,16 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html lang="es" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ניהול תקלות</title>
-    <link rel="manifest" href="manifest-manager.json">
+    <title>Reparaciones</title>
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0056b3">
     <link rel="icon" href="icon-192.png">
     <link rel="apple-touch-icon" href="icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="ניהול מעונות">
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <meta name="apple-mobile-web-app-title" content="Reparaciones">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -34,99 +33,64 @@
             z-index: -1;
             pointer-events: none;
         }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); position: relative; }
-        .hidden { display: none !important; }
-        h2, h3 { text-align: center; color: #333; margin-top: 0; }
-        textarea, input[type="text"], button { width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; font-family: inherit; }
-        button { cursor: pointer; font-weight: bold; border: none; color: white; transition: 0.2s; }
-        .btn-blue { background-color: #0056b3; } .btn-blue:hover { background-color: #004494; }
-        .btn-gray { background-color: #6c757d; } .btn-gray:hover { background-color: #5a6268; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .task-card { background: #fdfdfd; margin-bottom: 12px; border-radius: 8px; border: 1px solid #e1e1e1; overflow: hidden; transition: all 0.2s; }
+        .task-header { padding: 15px; font-size: 18px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .task-header:hover { background: #f8f9fa; }
+        .task-actions { padding: 15px; background: #f8f9fa; border-top: 1px solid #eee; display: flex; gap: 10px; }
+        .btn { padding: 12px; border: none; border-radius: 6px; color: white; font-weight: bold; flex: 1; cursor: pointer; font-size: 16px; }
         .btn-green { background-color: #198754; } .btn-green:hover { background-color: #157347; }
         .btn-red { background-color: #dc3545; } .btn-red:hover { background-color: #bb2d3b; }
-        .manager-list { list-style: none; padding: 0; }
-        .manager-list li { padding: 15px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; transition: all 0.3s;}
-        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; margin-bottom: 5px; }
-        .badge-green { background: #198754; } .badge-red { background: #dc3545; } .badge-orange { background: #fd7e14; }
-        .task-img { max-width: 100%; border-radius: 8px; margin-top: 10px; }
-        .drag-handle { font-size: 24px; color: #adb5bd; cursor: grab; user-select: none; }
-        .sortable-ghost { opacity: 0.4; background-color: #f8f9fa; }
-        .toggle-history-btn { background: transparent; color: #333; font-size: 22px; width: auto; margin: 0; padding: 5px; border: none; box-shadow: none; border-radius: 50%; }
-        .conn-error { font-size: 13px; color: #dc3545; text-align: center; margin-bottom: 15px; background: #fce8ea; border-radius: 8px; padding: 8px; }
-        .row-actions-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-        .thumb-btn { width: auto; background: transparent; color: #333; padding: 5px 10px; margin: 0; box-shadow: none; }
-        .task-card { background: #fdfdfd; margin-bottom: 12px; border-radius: 8px; border: 1px solid #e1e1e1; overflow: hidden; }
-        .task-header { padding: 15px; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
-        .task-actions { padding: 15px; background: #f8f9fa; border-top: 1px solid #eee; display: flex; gap: 10px; }
-        .task-actions .btn { padding: 12px; border: none; border-radius: 6px; color: white; font-weight: bold; flex: 1; cursor: pointer; font-size: 16px; }
+        .btn-gray { background-color: #6c757d; }
+        .hidden { display: none !important; }
         .first-task-card { border: 2px solid #0056b3; box-shadow: 0 4px 12px rgba(0,86,179,0.15); }
-        .first-task-card .task-header { font-size: 20px; font-weight: bold; color: #0056b3; }
-        .empty-state-box { text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px dashed #ccc; color: #555; margin-bottom: 15px; }
+        .first-task-card .task-header { cursor: default; background: #fff; font-weight: bold; color: #0056b3; font-size: 20px; }
+        .sync-indicator { font-size: 12px; color: #888; text-align: center; margin-bottom: 15px; }
+        .conn-error { font-size: 13px; color: #dc3545; text-align: center; margin-bottom: 15px; background: #fce8ea; border-radius: 8px; padding: 8px; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; box-sizing: border-box; }
+        textarea, input[type="file"] { width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; font-family: inherit; }
+        .thumb { max-width: 100%; border-radius: 8px; margin-bottom: 12px; }
     </style>
 </head>
 <body>
-    <div class="container" id="manager-screen">
-        <button onclick="toggleWorkerPreview()" style="position: absolute; top: 15px; left: 15px; width: auto; padding: 5px 10px; background: #6c757d; border-radius: 5px; font-size: 12px; margin: 0;">תצוגת עובד</button>
-        <h2>ניהול תקלות</h2>
-        <div id="conn-error" class="conn-error hidden">שגיאת חיבור. הנתונים לא מעודכנים.</div>
-
-        <!-- דאשבורד נתונים למנהל -->
-        <div style="display:flex; justify-content:space-between; text-align:center; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #dee2e6;">
-            <div><strong id="stat-active" style="font-size:20px; color:#0056b3;">0</strong><br><span style="font-size:12px; color:#666;">מחכות לטיפול</span></div>
-            <div><strong id="stat-pending" style="font-size:20px; color:#fd7e14;">0</strong><br><span style="font-size:12px; color:#666;">ממתינות לאישור</span></div>
-            <div><strong id="stat-done" style="font-size:20px; color:#198754;">0</strong><br><span style="font-size:12px; color:#666;">טופלו היום</span></div>
-            <div><strong id="stat-avg" style="font-size:20px; color:#6f42c1;">0</strong><br><span style="font-size:12px; color:#666;">ימים בממוצע</span></div>
-        </div>
-
-        <textarea id="task-input" rows="3" placeholder="הכנס תיאור משימה (כל שורה תהפוך למשימה נפרדת)"></textarea>
-        <input type="text" id="location-input" placeholder="מיקום/חדר (אופציונלי)">
-        <p style="font-size:12px; color:#888; margin:-8px 0 12px; text-align:center;">הזן טקסט בעברית, המערכת תוסיף אימוג'י חכם ותתרגם לספרדית לעובד</p>
+    <div class="container">
+        <h2>Lista de Reparaciones</h2>
+        <div id="conn-error" class="conn-error hidden">No se pudo conectar. Verifica tu conexión.</div>
         
-        <label class="photo-picker" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border:1.5px dashed #ccc; border-radius:8px; color:#888; font-weight:normal; margin-bottom:15px; cursor:pointer;">
-            <span id="add-photo-label">הוסף תמונה (אופציונלי)</span>
-            <input type="file" id="add-photo-input" accept="image/*" capture="environment" style="display:none;">
-        </label>
-        <div id="add-photo-preview-wrap"></div>
-        <button class="btn-blue" id="add-btn" onclick="addTasks()">הוסף משימות</button>
-
-        <h3 style="border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 30px;">משימות פעילות (ניתן לגרור לשינוי סדר)</h3>
-        <div id="manager-empty-box" class="empty-state-box hidden"></div>
-        <ul id="list-active" class="manager-list"></ul>
-
-        <h3 style="border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 30px; color: #fd7e14;">ממתינות לאישור / בעיות מדווחות</h3>
-        <ul id="list-pending" class="manager-list"></ul>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-top: 30px; padding-bottom: 5px;">
-            <h3 style="margin: 0; color: #6c757d; border: none; padding: 0;">היסטוריה </h3>
-            <div style="display: flex; gap:10px;">
-                <button class="btn-gray" onclick="exportCSV()" style="width:auto; padding:5px 10px; margin:0; font-size:12px; background:#198754;">📥 הפק דוח</button>
-                <button class="toggle-history-btn" onclick="document.getElementById('list-history').classList.toggle('hidden')">⬇️</button>
-            </div>
+        <!-- דאשבורד נתונים לעובד -->
+        <div style="display:flex; justify-content:space-around; text-align:center; background:#e9ecef; padding:12px; border-radius:8px; margin-bottom:15px; border:1px solid #dee2e6;">
+            <div><strong id="w-stat-active" style="font-size:18px; color:#0056b3;">0</strong><br><span style="font-size:12px; color:#555;">Pendientes (לטיפול)</span></div>
+            <div><strong id="w-stat-done" style="font-size:18px; color:#198754;">0</strong><br><span style="font-size:12px; color:#555;">Hecho hoy (טופלו היום)</span></div>
         </div>
-        <ul id="list-history" class="manager-list hidden"></ul>
+
+        <div id="worker-list"></div>
     </div>
 
-    <!-- תצוגה מקדימה של העובד -->
-    <div class="container hidden" id="worker-preview" dir="ltr">
-        <h2 style="color: #0056b3;">Vista previa del empleado</h2>
-        <p style="text-align: center; color: #888; font-size: 13px; margin-top:-10px;">(כך נראית האפליקציה בטלפון של העובד)</p>
-        <div id="preview-list"></div>
-        <button class="btn-gray" onclick="toggleWorkerPreview()" style="margin-top: 10px;">חזור לניהול</button>
+    <div class="modal hidden" id="cant-fix-modal">
+        <div class="modal-content">
+            <h3 style="color: #dc3545; text-align: center; margin-top:0;">❌ No se puede</h3>
+            <textarea id="worker-note" rows="3" placeholder="Que pasó? (Opcional)"></textarea>
+            <div id="photo-preview-wrap"></div>
+            <input type="file" id="worker-img" accept="image/*" capture="environment">
+            <button class="btn btn-red" id="save-modal-btn" onclick="saveCantFix()" style="width:100%;">Guardar</button>
+            <button class="btn btn-gray" onclick="closeModal()" style="width:100%; margin-top:10px;">Cancelar</button>
+        </div>
     </div>
 
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbyWWUGpf8LXSl8e3So7D6NLdD6Q9jZVezNG5v1lBuf3_KpO3rv_S2CZWYiNx4AmOrQQ0A/exec";
         let tasks = [];
-        let activeSortable = null;
+        let currentTaskId = null;
+        let pendingPhoto = null;
         let isSyncing = false;
-        let inWorkerPreview = false;
 
         function setConnError(on) {
             document.getElementById('conn-error').classList.toggle('hidden', !on);
         }
-        function esc(s) {
-            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-        }
 
+        // פונקציית אימוג'ים חכמים
         function applySmartEmojis(text) {
             let res = text;
             if (/(מים|נזילה|פיצוץ|ברז|אסלה|שירותים|מקלחת|כיור|ביוב|צינור)/i.test(res)) res = '💧 ' + res;
@@ -135,27 +99,6 @@
             if (/(מזגן|מיזוג|שלט מזגן|קור|חימום)/i.test(res)) res = '❄️ ' + res;
             if (/(דלת|חלון|מנעול|ציר|ידית|מפתח)/i.test(res)) res = '🚪 ' + res;
             return res;
-        }
-
-        function exportCSV() {
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
-            csvContent += "ID,תיאור משימה,סטטוס,תאריך יצירה,תאריך סיום,הערות לעיכוב\n";
-            tasks.forEach(t => {
-                const id = t.id || '';
-                const text = `"${esc(t.textHe).replace(/"/g, '""')}"`;
-                const status = t.status === 'active' ? 'פעיל' : t.status === 'archived' ? 'הושלם' : t.status === 'issue_pending' ? 'דווחה בעיה' : 'ממתין לאישור';
-                const created = t.createdAt ? new Date(t.createdAt).toLocaleString('he-IL') : '';
-                const completed = t.completedAt ? new Date(t.completedAt).toLocaleString('he-IL') : '';
-                const reason = t.reasonText ? `"${esc(t.reasonText).replace(/"/g, '""')}"` : '';
-                csvContent += `${id},${text},${status},${created},${completed},${reason}\n`;
-            });
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "דוח_תקלות_מעונות.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
         }
 
         async function apiPost(payload) {
@@ -168,11 +111,11 @@
                 });
                 result = await res.json();
             } catch (e) {
-                alert('שגיאת תקשורת : ' + e);
+                alert('Error de conexión: ' + e);
                 return { ok: false, error: String(e) };
             }
             if (!result || !result.ok) {
-                alert('שגיאה מהשרת : ' + (result && result.error ? result.error : 'לא ידועה'));
+                alert('Error del servidor: ' + (result && result.error ? result.error : 'desconocido'));
             }
             return result;
         }
@@ -184,11 +127,10 @@
                 const res = await fetch(API_URL);
                 const data = await res.json();
                 if (data && data.ok) {
-                    // שמירת המשימות הזמניות שעדיין נשמרות כדי שהסנכרון לא ידרוס אותן
                     const tempTasks = tasks.filter(t => t.isTemp);
                     tasks = [...data.tasks, ...tempTasks];
                     setConnError(false);
-                    renderAll();
+                    renderWorker();
                 } else {
                     setConnError(true);
                 }
@@ -198,25 +140,100 @@
             isSyncing = false;
         }
 
-        function renderAll() {
-            renderManager();
-            if (inWorkerPreview) renderPreview();
-        }
-
-        function getDaysWaitingHe(task) {
-            const days = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-            if (days <= 0) return 'היום';
-            if (days === 1) return 'אתמול';
-            if (days === 2) return 'שלשום';
-            return `לפני ${days} ימים`;
-        }
-        function getDaysWaitingEs(task) {
+        function getDaysWaiting(task) {
             const days = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
             return days <= 0 ? 'Hoy' : `Hace ${days} d a${days > 1 ? 's' : ''}`;
         }
 
-        let addPendingPhoto = null;
-        document.getElementById('add-photo-input').addEventListener('change', function (e) {
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        function renderWorker() {
+            const list = document.getElementById('worker-list');
+            const activeTasks = tasks.filter(t => t.status === 'active')
+                .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+            // חישוב שעת ההתחלה של היום (7:30 בבוקר)
+            const today730 = new Date();
+            today730.setHours(7, 30, 0, 0);
+            if (new Date() < today730) today730.setDate(today730.getDate() - 1);
+
+            // ספירת משימות שטופלו היום
+            const countDone = tasks.filter(t => 
+                (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && 
+                t.completedAt && new Date(t.completedAt) >= today730
+            ).length;
+
+            // עדכון המספרים בדאשבורד
+            const elActive = document.getElementById('w-stat-active');
+            const elDone = document.getElementById('w-stat-done');
+            if (elActive) elActive.innerText = activeTasks.length;
+            if (elDone) elDone.innerText = countDone;
+
+            if (activeTasks.length === 0) {
+                list.innerHTML = `<div style="text-align:center; padding:25px; background:#f8f9fa; border-radius:8px; border:1px solid #ddd; color:#198754; font-weight:bold; font-size:16px;">
+                    כל הכבוד! נגמרו המשימות הדחופות!<br><span style="font-size:13px; color:#666; font-weight:normal;">כל הכבוד, רק צריך לראות שחיים עומד בקצב</span>
+                </div>`;
+                return;
+            }
+            list.innerHTML = activeTasks.map((task, index) => {
+                const isFirst = index === 0;
+                const daysText = getDaysWaiting(task);
+                const text = task.textEs || task.textHe;
+                const textWithEmoji = applySmartEmojis(esc(text)); // הוספת אימוג'י
+
+                const photoHtml = task.reasonPhotoBase64
+                    ? `<img src="${task.reasonPhotoBase64}" class="thumb" style="margin-top:10px;">`
+                    : '';
+                return `
+                    <div class="task-card ${isFirst ? 'first-task-card' : ''}">
+                        <div class="task-header" ${isFirst ? '' : `onclick="toggleCard('${task.id}')"`}>
+                            <div>
+                                ${textWithEmoji}<br>
+                                <span style="font-size: 13px; color: #888; font-weight: normal;"> ${daysText}</span>
+                                ${isFirst ? photoHtml : ''}
+                            </div>
+                            ${isFirst ? '' : '<span>▼</span>'}
+                        </div>
+                        ${!isFirst && task.reasonPhotoBase64 ? `<div style="padding:0 15px;">${photoHtml}</div>` : ''}
+                        <div class="task-actions ${isFirst ? '' : 'hidden'}" id="actions-${task.id}">
+                            <button class="btn btn-green" onclick="markFixed('${task.id}')">✅ Reparado</button>
+                            <button class="btn btn-red" onclick="openCantFix('${task.id}')">❌ No se puede</button>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function toggleCard(id) {
+            const target = document.getElementById(`actions-${id}`);
+            const isHidden = target.classList.contains('hidden');
+            document.querySelectorAll('.task-actions').forEach(el => el.classList.add('hidden'));
+            if (isHidden) target.classList.remove('hidden');
+        }
+
+        // מחיקה אופטימית מקומית לעובד - מגיב בשנייה!
+        async function markFixed(id) {
+            tasks = tasks.filter(t => t.id !== id);
+            renderWorker();
+            const result = await apiPost({ action: 'markFixed', id });
+            if (!result || !result.ok) await syncFromCloud(); 
+        }
+
+        function openCantFix(id) {
+            currentTaskId = id;
+            pendingPhoto = null;
+            document.getElementById('worker-note').value = '';
+            document.getElementById('worker-img').value = '';
+            document.getElementById('photo-preview-wrap').innerHTML = '';
+            document.getElementById('cant-fix-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('cant-fix-modal').classList.add('hidden');
+        }
+
+        document.getElementById('worker-img').addEventListener('change', function (e) {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
@@ -228,292 +245,32 @@
                     canvas.width = img.width * scale;
                     canvas.height = img.height * scale;
                     canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                    addPendingPhoto = canvas.toDataURL('image/jpeg', 0.5);
-                    document.getElementById('add-photo-preview-wrap').innerHTML = `<img src="${addPendingPhoto}" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
-                    document.getElementById('add-photo-label').innerText = 'החלף תמונה';
+                    pendingPhoto = canvas.toDataURL('image/jpeg', 0.5);
+                    document.getElementById('photo-preview-wrap').innerHTML = `<img class="thumb" src="${pendingPhoto}">`;
                 };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
         });
 
-        // פונקציית הוספה מהירה וחדשה (Optimistic UI)
-        async function addTasks() {
-            let input = document.getElementById('task-input').value.trim();
-            const location = document.getElementById('location-input').value.trim();
-            if (!input) return;
-
-            if (location) {
-                input = input.split('\n').map(l => `[${location}] ${l}`).join('\n');
-            }
-            const lines = input.split('\n').map(l => l.trim()).filter(l => l !== '');
-
-            // 1. יצירת משימות זמניות למסך
-            const tempTasks = lines.map((line, index) => ({
-                id: 'temp-' + Date.now() + '-' + index,
-                textHe: line,
-                status: 'active',
-                createdAt: new Date().toISOString(),
-                isTemp: true,
-                reasonPhotoBase64: addPendingPhoto || ''
-            }));
+        // עדכון אופטימי גם בדיווח על בעיה
+        async function saveCantFix() {
+            const reasonTextEs = document.getElementById('worker-note').value.trim();
+            const btn = document.getElementById('save-modal-btn');
+            btn.disabled = true;
+            btn.innerText = 'Guardando...';
+            const payload = { action: 'reportIssue', id: currentTaskId, reasonTextEs };
+            if (pendingPhoto) payload.reasonPhotoBase64 = pendingPhoto;
             
-            // 2. הוספה למערכת המקומית ורענון מיידי
-            tasks = [...tasks, ...tempTasks];
-            renderAll();
-
-            // 3. ניקוי הטפסים מיד כדי שתוכל להמשיך להקליד
-            document.getElementById('task-input').value = '';
-            document.getElementById('location-input').value = '';
-            document.getElementById('add-photo-input').value = '';
-            document.getElementById('add-photo-preview-wrap').innerHTML = '';
-            document.getElementById('add-photo-label').innerText = 'הוסף תמונה';
-            const photoToUpload = addPendingPhoto;
-            addPendingPhoto = null;
-
-            // 4. שיגור מאחורי הקלעים לשרת
-            const payload = { action: 'addBulk', lines };
-            if (photoToUpload) payload.photoBase64 = photoToUpload;
+            // מחיקה מיידית מהמסך
+            tasks = tasks.filter(t => t.id !== currentTaskId);
+            renderWorker();
+            closeModal();
             
-            apiPost(payload).then(async (result) => {
-                // לאחר השמירה מסירים את המשימות הזמניות מהרשימה המקומית
-                const tempIds = tempTasks.map(t => t.id);
-                tasks = tasks.filter(t => !tempIds.includes(t.id));
-                // ומושכים את הנתונים האמיתיים מגוגל
-                await syncFromCloud();
-            });
-        }
-
-        function renderManager() {
-            const listActive = document.getElementById('list-active');
-            const listPending = document.getElementById('list-pending');
-            const listHistory = document.getElementById('list-history');
-            const emptyBox = document.getElementById('manager-empty-box');
-
-            const active = tasks.filter(t => t.status === 'active').sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
-            const pending = tasks.filter(t => t.status === 'pending_confirm' || t.status === 'issue_pending')
-                .sort((a,b)=> new Date(b.completedAt) - new Date(a.completedAt));
-            const history = tasks.filter(t => t.status === 'archived')
-                .sort((a,b)=> new Date(b.completedAt) - new Date(a.completedAt));
-
-            const today730 = new Date();
-            today730.setHours(7, 30, 0, 0);
-            if (new Date() < today730) today730.setDate(today730.getDate() - 1);
-
-            const countDone = tasks.filter(t => 
-                (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && 
-                t.completedAt && new Date(t.completedAt) >= today730
-            ).length;
-
-            const completedTasks = tasks.filter(t => t.status === 'archived' || t.status === 'pending_confirm').filter(t => t.completedAt && t.createdAt);
-            let totalTime = 0; let validCount = 0;
-            completedTasks.forEach(t => {
-                const created = new Date(t.createdAt).getTime();
-                const completed = new Date(t.completedAt).getTime();
-                if (completed > created) {
-                    totalTime += (completed - created);
-                    validCount++;
-                }
-            });
-            const avgDays = validCount > 0 ? (totalTime / validCount / (1000 * 60 * 60 * 24)).toFixed(1) : 0;
-
-            const statActive = document.getElementById('stat-active');
-            const statPending = document.getElementById('stat-pending');
-            const statDone = document.getElementById('stat-done');
-            const statAvg = document.getElementById('stat-avg');
-            if(statActive) statActive.innerText = active.length;
-            if(statPending) statPending.innerText = pending.length;
-            if(statDone) statDone.innerText = countDone;
-            if(statAvg) statAvg.innerText = avgDays;
-
-            if (active.length === 0) {
-                emptyBox.innerHTML = `<strong>וואו! נגמרו המשימות</strong><br><span style="font-size:13px; color:#666;">שווה לערוך בדיקה מה עוד צריך תיקון או להעלות משימות רוחב.</span>`;
-                emptyBox.classList.remove('hidden');
-                listActive.innerHTML = '';
-            } else {
-                emptyBox.classList.add('hidden');
-                listActive.innerHTML = active.map(task => {
-                    const waitDays = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-                    const isTemp = task.isTemp;
-                    const isRedAlert = waitDays > 3 && !isTemp; 
-                    
-                    let cardStyle = isRedAlert ? 'background:#fff5f5; border:1px solid #ffcaca;' : 'background:#fff; border:1px solid #ddd;';
-                    if (isTemp) cardStyle += ' opacity: 0.6; pointer-events: none; border: 1px dashed #999;'; 
-                    
-                    const waitText = isTemp ? 'שומר בשרת...' : getDaysWaitingHe(task);
-                    const textWithEmoji = applySmartEmojis(esc(task.textHe)); 
-                    
-                    let html = `<li data-id="${task.id}" style="${cardStyle}">
-                        <div>
-                            <strong>${textWithEmoji}</strong>
-                            ${isTemp ? '<span style="margin-right:8px; font-size:12px; color:#ff9800; font-weight:bold;">⏳ בביצוע...</span>' : ''}
-                            <br>
-                            <span style="font-size:12px; color:${isRedAlert ? '#dc3545' : '#666'}; font-weight:${isRedAlert ? 'bold' : 'normal'};">המתנה: ${esc(waitText)}</span>`;
-                    if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px; opacity: ${isTemp ? '0.7' : '1'};">`;
-                    html += `</div>
-                        <div class="row-actions-col">
-                            <button class="btn-red thumb-btn" style="background:${isTemp ? '#ccc' : '#dc3545'};color:#fff;" ${isTemp ? 'disabled' : ''} onclick="deleteTask('${task.id}')">🗑️</button>
-                            <div class="drag-handle" style="${isTemp ? 'color:#eee;' : ''}">≡</div>
-                        </div>
-                    </li>`;
-                    return html;
-                }).join('');
-            }
-
-            listPending.innerHTML = pending.map(task => {
-                const waitText = getDaysWaitingHe(task);
-                const textWithEmoji = applySmartEmojis(esc(task.textHe));
-                const isIssue = task.status === 'issue_pending';
-                const badgeClass = isIssue ? 'badge-red' : 'badge-green';
-                const badgeText = isIssue ? 'דווחה בעיה' : 'ממתין לאישור';
-                let html = `<li style="background:#fff; border:1px solid #ddd;">
-                    <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
-                    <span class="badge ${badgeClass}" style="margin-top:5px;">${badgeText}</span>`;
-                if (task.reasonText) html += `<p style="margin:5px 0; font-size:13px; background:#f0f0f0; padding:6px; border-radius:4px;">הערה: ${esc(task.reasonText)}</p>`;
-                if (task.reasonPhotoBase64) html += `<img src="${task.reasonPhotoBase64}" class="task-img">`;
-                html += `</div>`;
-                if (isIssue) {
-                    html += `<div class="row-actions-col">
-                        <button class="btn-red thumb-btn" style="background:#dc3545;color:#fff;" onclick="deleteTask('${task.id}')">🗑️</button>
-                        <button class="btn-gray thumb-btn" style="background:#6c757d;color:#fff;" onclick="resubmitTask('${task.id}')">🔄</button>
-                    </div>`;
-                } else {
-                    html += `<button class="btn-green" style="width:auto; padding:8px 15px; margin:0;" onclick="confirmArchive('${task.id}')">אשר והעבר לארכיון</button>`;
-                }
-                html += `</li>`;
-                return html;
-            }).join('');
-
-            listHistory.innerHTML = history.map(task => {
-                const waitText = getDaysWaitingHe(task);
-                const textWithEmoji = applySmartEmojis(esc(task.textHe));
-                return `<li style="background:#fff; border:1px solid #ddd;">
-                    <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
-                    <span class="badge badge-green" style="margin-top:5px;">הושלם</span></div>
-                    <button class="btn-gray thumb-btn" style="background:#6c757d;color:#fff;" onclick="undoHistory('${task.id}')">↩️</button>
-                </li>`;
-            }).join('');
-
-            if (activeSortable) activeSortable.destroy();
-            if (active.length > 0) {
-                activeSortable = Sortable.create(listActive, {
-                    animation: 150,
-                    handle: '.drag-handle',
-                    ghostClass: 'sortable-ghost',
-                    onEnd: async function () {
-                        const ids = Array.from(listActive.children).map(li => li.dataset.id);
-                        ids.forEach((id, i) => {
-                            const t = tasks.find(x => x.id === id);
-                            if (t) t.order = i;
-                        });
-                        const result = await apiPost({ action: 'reorder', ids });
-                        if (!result || !result.ok) await syncFromCloud();
-                    }
-                });
-            }
-        }
-
-        function maxActiveOrder_() {
-            const orders = tasks.filter(t => t.status === 'active').map(t => Number(t.order) || 0);
-            return orders.length ? Math.max(...orders) : 0;
-        }
-
-        async function deleteTask(id) {
-            if (!confirm('האם למחוק?')) return;
-            const backup = tasks;
-            tasks = tasks.filter(t => t.id !== id);
-            renderAll();
-            const result = await apiPost({ action: 'deleteTask', id });
-            if (!result || !result.ok) { tasks = backup; await syncFromCloud(); }
-        }
-
-        async function confirmArchive(id) {
-            const t = tasks.find(x => x.id === id);
-            if (t) t.status = 'archived';
-            renderAll();
-            const result = await apiPost({ action: 'confirmArchive', id });
+            btn.disabled = false;
+            btn.innerText = 'Guardar';
+            const result = await apiPost(payload);
             if (!result || !result.ok) await syncFromCloud();
-        }
-
-        async function resubmitTask(id) {
-            const t = tasks.find(x => x.id === id);
-            if (t) {
-                t.status = 'active';
-                t.reasonText = '';
-                t.reasonPhotoBase64 = '';
-                t.order = maxActiveOrder_() + 1;
-            }
-            renderAll();
-            const result = await apiPost({ action: 'resubmitTask', id });
-            if (!result || !result.ok) await syncFromCloud();
-        }
-
-        async function undoHistory(id) {
-            const t = tasks.find(x => x.id === id);
-            if (t) {
-                t.status = 'active';
-                t.order = maxActiveOrder_() + 1;
-            }
-            renderAll();
-            const result = await apiPost({ action: 'undoHistory', id });
-            if (!result || !result.ok) await syncFromCloud();
-        }
-
-        function toggleWorkerPreview() {
-            inWorkerPreview = !inWorkerPreview;
-            document.getElementById('manager-screen').classList.toggle('hidden', inWorkerPreview);
-            document.getElementById('worker-preview').classList.toggle('hidden', !inWorkerPreview);
-            document.body.dir = inWorkerPreview ? 'ltr' : 'rtl';
-            if (inWorkerPreview) renderPreview();
-        }
-
-        function renderPreview() {
-            const list = document.getElementById('preview-list');
-            const active = tasks.filter(t => t.status === 'active').sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
-            if (active.length === 0) {
-                list.innerHTML = `<div style="text-align:center; padding:20px; background:#fff; border-radius:8px; border:1px solid #ddd; color:#198754; font-weight:bold;">
-                    כל הכבוד! נגמרו המשימות הדחופות!<br><span style="font-size:12px; color:#666; font-weight:normal;">רק צריך לראות שחיים עומד בקצב</span>
-                </div>`;
-                return;
-            }
-            list.innerHTML = active.map((task, index) => {
-                const isFirst = index === 0;
-                const daysText = getDaysWaitingEs(task);
-                const text = task.textEs || task.textHe;
-                const textWithEmoji = applySmartEmojis(esc(text));
-                
-                return `
-                    <div class="task-card ${isFirst ? 'first-task-card' : ''}">
-                        <div class="task-header" ${isFirst ? '' : `onclick="this.nextElementSibling.classList.toggle('hidden')"`} style="cursor: ${isFirst ? 'default' : 'pointer'};">
-                            <div>
-                                ${textWithEmoji}<br>
-                                <span style="font-size: 13px; color: #888; font-weight: normal;"> ${daysText}</span>
-                            </div>
-                            ${isFirst ? '' : '<span>▼</span>'}
-                        </div>
-                        <div class="task-actions ${isFirst ? '' : 'hidden'}">
-                            <button class="btn" style="background:#198754;" onclick="previewMarkFixed('${task.id}')">✅ Reparado</button>
-                            <button class="btn" style="background:#dc3545;" onclick="previewOpenCantFix('${task.id}')">❌ No se puede</button>
-                        </div>
-                    </div>`;
-            }).join('');
-        }
-
-        async function previewMarkFixed(id) {
-            tasks = tasks.filter(t => t.id !== id);
-            renderAll();
-            const result = await apiPost({ action: 'markFixed', id });
-            if (!result || !result.ok) await syncFromCloud();
-        }
-
-        function previewOpenCantFix(id) {
-            const note = prompt('Que pasó? (Opcional)');
-            if (note === null) return;
-            tasks = tasks.filter(t => t.id !== id);
-            renderAll();
-            apiPost({ action: 'reportIssue', id, reasonTextEs: note.trim() }).then(result => {
-                if (!result || !result.ok) syncFromCloud();
-            });
         }
 
         window.onload = () => { syncFromCloud(); };

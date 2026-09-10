@@ -127,7 +127,6 @@
             return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         }
 
-        // פונקציית אימוג'ים חכמים
         function applySmartEmojis(text) {
             let res = text;
             if (/(מים|נזילה|פיצוץ|ברז|אסלה|שירותים|מקלחת|כיור|ביוב|צינור)/i.test(res)) res = '💧 ' + res;
@@ -138,9 +137,8 @@
             return res;
         }
 
-        // הפקת דוח CSV
         function exportCSV() {
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // תמיכה בעברית באקסל
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
             csvContent += "ID,תיאור משימה,סטטוס,תאריך יצירה,תאריך סיום,הערות לעיכוב\n";
             tasks.forEach(t => {
                 const id = t.id || '';
@@ -186,7 +184,9 @@
                 const res = await fetch(API_URL);
                 const data = await res.json();
                 if (data && data.ok) {
-                    tasks = data.tasks;
+                    // שמירת המשימות הזמניות שעדיין נשמרות כדי שהסנכרון לא ידרוס אותן
+                    const tempTasks = tasks.filter(t => t.isTemp);
+                    tasks = [...data.tasks, ...tempTasks];
                     setConnError(false);
                     renderAll();
                 } else {
@@ -237,6 +237,7 @@
             reader.readAsDataURL(file);
         });
 
+        // פונקציית הוספה מהירה וחדשה (Optimistic UI)
         async function addTasks() {
             let input = document.getElementById('task-input').value.trim();
             const location = document.getElementById('location-input').value.trim();
@@ -245,23 +246,42 @@
             if (location) {
                 input = input.split('\n').map(l => `[${location}] ${l}`).join('\n');
             }
-
             const lines = input.split('\n').map(l => l.trim()).filter(l => l !== '');
-            const btn = document.getElementById('add-btn');
-            btn.disabled = true;
-            btn.innerText = 'מוסיף...';
-            const payload = { action: 'addBulk', lines };
-            if (addPendingPhoto) payload.photoBase64 = addPendingPhoto;
-            await apiPost(payload);
+
+            // 1. יצירת משימות זמניות למסך
+            const tempTasks = lines.map((line, index) => ({
+                id: 'temp-' + Date.now() + '-' + index,
+                textHe: line,
+                status: 'active',
+                createdAt: new Date().toISOString(),
+                isTemp: true,
+                reasonPhotoBase64: addPendingPhoto || ''
+            }));
+            
+            // 2. הוספה למערכת המקומית ורענון מיידי
+            tasks = [...tasks, ...tempTasks];
+            renderAll();
+
+            // 3. ניקוי הטפסים מיד כדי שתוכל להמשיך להקליד
             document.getElementById('task-input').value = '';
             document.getElementById('location-input').value = '';
             document.getElementById('add-photo-input').value = '';
             document.getElementById('add-photo-preview-wrap').innerHTML = '';
             document.getElementById('add-photo-label').innerText = 'הוסף תמונה';
+            const photoToUpload = addPendingPhoto;
             addPendingPhoto = null;
-            btn.disabled = false;
-            btn.innerText = 'הוסף משימות';
-            await syncFromCloud();
+
+            // 4. שיגור מאחורי הקלעים לשרת
+            const payload = { action: 'addBulk', lines };
+            if (photoToUpload) payload.photoBase64 = photoToUpload;
+            
+            apiPost(payload).then(async (result) => {
+                // לאחר השמירה מסירים את המשימות הזמניות מהרשימה המקומית
+                const tempIds = tempTasks.map(t => t.id);
+                tasks = tasks.filter(t => !tempIds.includes(t.id));
+                // ומושכים את הנתונים האמיתיים מגוגל
+                await syncFromCloud();
+            });
         }
 
         function renderManager() {
@@ -276,18 +296,15 @@
             const history = tasks.filter(t => t.status === 'archived')
                 .sort((a,b)=> new Date(b.completedAt) - new Date(a.completedAt));
 
-            // חישוב שעת ההתחלה של היום (7:30 בבוקר)
             const today730 = new Date();
             today730.setHours(7, 30, 0, 0);
             if (new Date() < today730) today730.setDate(today730.getDate() - 1);
 
-            // ספירת משימות שטופלו היום
             const countDone = tasks.filter(t => 
                 (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && 
                 t.completedAt && new Date(t.completedAt) >= today730
             ).length;
 
-            // חישוב זמן ממוצע למשימות שהושלמו (ב-30 הימים האחרונים למשל, או הכל)
             const completedTasks = tasks.filter(t => t.status === 'archived' || t.status === 'pending_confirm').filter(t => t.completedAt && t.createdAt);
             let totalTime = 0; let validCount = 0;
             completedTasks.forEach(t => {
@@ -300,7 +317,6 @@
             });
             const avgDays = validCount > 0 ? (totalTime / validCount / (1000 * 60 * 60 * 24)).toFixed(1) : 0;
 
-            // עדכון המספרים במסך המנהל
             const statActive = document.getElementById('stat-active');
             const statPending = document.getElementById('stat-pending');
             const statDone = document.getElementById('stat-done');
@@ -310,7 +326,6 @@
             if(statDone) statDone.innerText = countDone;
             if(statAvg) statAvg.innerText = avgDays;
 
-            // הודעה מותאמת אישית אם נגמרו המשימות הפעילות
             if (active.length === 0) {
                 emptyBox.innerHTML = `<strong>וואו! נגמרו המשימות</strong><br><span style="font-size:13px; color:#666;">שווה לערוך בדיקה מה עוד צריך תיקון או להעלות משימות רוחב.</span>`;
                 emptyBox.classList.remove('hidden');
@@ -319,18 +334,26 @@
                 emptyBox.classList.add('hidden');
                 listActive.innerHTML = active.map(task => {
                     const waitDays = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-                    const isRedAlert = waitDays > 3; // התראת משימות אדומות
-                    const cardStyle = isRedAlert ? 'background:#fff5f5; border:1px solid #ffcaca;' : 'background:#fff; border:1px solid #ddd;';
-                    const waitText = getDaysWaitingHe(task);
-                    const textWithEmoji = applySmartEmojis(esc(task.textHe)); // הוספת אימוג'י
+                    const isTemp = task.isTemp;
+                    const isRedAlert = waitDays > 3 && !isTemp; 
+                    
+                    let cardStyle = isRedAlert ? 'background:#fff5f5; border:1px solid #ffcaca;' : 'background:#fff; border:1px solid #ddd;';
+                    if (isTemp) cardStyle += ' opacity: 0.6; pointer-events: none; border: 1px dashed #999;'; 
+                    
+                    const waitText = isTemp ? 'שומר בשרת...' : getDaysWaitingHe(task);
+                    const textWithEmoji = applySmartEmojis(esc(task.textHe)); 
                     
                     let html = `<li data-id="${task.id}" style="${cardStyle}">
-                        <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:${isRedAlert ? '#dc3545' : '#666'}; font-weight:${isRedAlert ? 'bold' : 'normal'};">המתנה: ${esc(waitText)}</span>`;
-                    if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px;">`;
+                        <div>
+                            <strong>${textWithEmoji}</strong>
+                            ${isTemp ? '<span style="margin-right:8px; font-size:12px; color:#ff9800; font-weight:bold;">⏳ בביצוע...</span>' : ''}
+                            <br>
+                            <span style="font-size:12px; color:${isRedAlert ? '#dc3545' : '#666'}; font-weight:${isRedAlert ? 'bold' : 'normal'};">המתנה: ${esc(waitText)}</span>`;
+                    if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px; opacity: ${isTemp ? '0.7' : '1'};">`;
                     html += `</div>
                         <div class="row-actions-col">
-                            <button class="btn-red thumb-btn" style="background:#dc3545;color:#fff;" onclick="deleteTask('${task.id}')">🗑️</button>
-                            <div class="drag-handle">≡</div>
+                            <button class="btn-red thumb-btn" style="background:${isTemp ? '#ccc' : '#dc3545'};color:#fff;" ${isTemp ? 'disabled' : ''} onclick="deleteTask('${task.id}')">🗑️</button>
+                            <div class="drag-handle" style="${isTemp ? 'color:#eee;' : ''}">≡</div>
                         </div>
                     </li>`;
                     return html;

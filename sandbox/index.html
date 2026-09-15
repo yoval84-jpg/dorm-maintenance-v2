@@ -97,9 +97,41 @@
         let pendingPhoto = null;
         let isSyncing = false;
         let prevActiveCount = -1; // משתנה למעקב אחרי כמות המשימות להפעלת קונפטי סיום
+        let dataVersion = '';
+        const CACHE_KEY = 'maintenance-worker-state-v2';
+        const SYNC_INTERVAL_MS = 30000;
+        const REQUEST_TIMEOUT_MS = 15000;
 
         function setConnError(on) {
             document.getElementById('conn-error').classList.toggle('hidden', !on);
+        }
+
+        function loadCachedState() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(CACHE_KEY));
+                if (!saved || !Array.isArray(saved.tasks)) return;
+                tasks = saved.tasks;
+                dataVersion = typeof saved.version === 'string' ? saved.version : '';
+                renderWorker();
+            } catch (_) { localStorage.removeItem(CACHE_KEY); }
+        }
+
+        function saveCachedState() {
+            try { localStorage.setItem(CACHE_KEY, JSON.stringify({ version: dataVersion, tasks })); }
+            catch (_) { /* המטמון הוא שיפור ביצועים בלבד. */ }
+        }
+
+        async function fetchJson(url, options = {}) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+            try {
+                const response = await fetch(url, { ...options, signal: controller.signal });
+                const text = await response.text();
+                if (!response.ok || !text.trim().startsWith('{')) throw new Error('INVALID_SERVER_RESPONSE');
+                return JSON.parse(text);
+            } finally {
+                clearTimeout(timeout);
+            }
         }
 
         function applySmartEmojis(text) {
@@ -115,14 +147,13 @@
         async function apiPost(payload) {
             let result;
             try {
-                const res = await fetch(API_URL, {
+                result = await fetchJson(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload)
                 });
-                result = await res.json();
             } catch (e) {
-                alert('Error de conexión: ' + e);
+                alert('No se pudo guardar el cambio. Comprueba la conexión e inténtalo de nuevo.');
                 return { ok: false, error: String(e) };
             }
             if (!result || !result.ok) {
@@ -135,10 +166,17 @@
             if (isSyncing) return;
             isSyncing = true;
             try {
-                const res = await fetch(API_URL);
-                const data = await res.json();
-                if (data && data.ok) {
+                const url = new URL(API_URL);
+                url.searchParams.set('view', 'worker');
+                if (dataVersion) url.searchParams.set('version', dataVersion);
+                const data = await fetchJson(url, { cache: 'no-store' });
+                if (data && data.ok && data.unchanged) {
+                    dataVersion = data.version || dataVersion;
+                    setConnError(false);
+                } else if (data && data.ok && Array.isArray(data.tasks)) {
                     tasks = data.tasks;
+                    dataVersion = data.version || '';
+                    saveCachedState();
                     setConnError(false);
                     renderWorker();
                 } else {
@@ -255,11 +293,18 @@
             }
 
             // העלמה מקומית מיידית לצורך תחושת מהירות
+            const previousTasks = tasks;
             tasks = tasks.filter(t => t.id !== id);
+            saveCachedState();
             renderWorker();
             
             const result = await apiPost({ action: 'markFixed', id });
-            if (!result || !result.ok) await syncFromCloud(); 
+            if (!result || !result.ok) {
+                tasks = previousTasks;
+                saveCachedState();
+                renderWorker();
+                await syncFromCloud();
+            }
         }
 
         function openCantFix(id) {
@@ -303,18 +348,30 @@
             const payload = { action: 'reportIssue', id: currentTaskId, reasonTextEs };
             if (pendingPhoto) payload.reasonPhotoBase64 = pendingPhoto;
             
+            const previousTasks = tasks;
             tasks = tasks.filter(t => t.id !== currentTaskId);
+            saveCachedState();
             renderWorker();
             
             closeModal();
             btn.disabled = false;
             btn.innerText = 'Guardar';
             const result = await apiPost(payload);
-            if (!result || !result.ok) await syncFromCloud();
+            if (!result || !result.ok) {
+                tasks = previousTasks;
+                saveCachedState();
+                renderWorker();
+                await syncFromCloud();
+            }
         }
 
-        window.onload = () => { syncFromCloud(); };
-        setInterval(syncFromCloud, 10000);
+        window.onload = () => { loadCachedState(); syncFromCloud(); };
+        setInterval(() => { if (document.visibilityState === 'visible') syncFromCloud(); }, SYNC_INTERVAL_MS);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') syncFromCloud();
+        });
+        window.addEventListener('focus', syncFromCloud);
+        window.addEventListener('online', syncFromCloud);
         // if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
     </script>
 </body>

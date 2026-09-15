@@ -147,9 +147,38 @@
         let activeSortable = null;
         let isSyncing = false;
         let inWorkerPreview = false;
+        let dataVersion = '';
+        const CACHE_KEY = 'maintenance-manager-state-v2';
+        const SYNC_INTERVAL_MS = 30000;
+        const REQUEST_TIMEOUT_MS = 15000;
 
         function setConnError(on) {
             document.getElementById('conn-error').classList.toggle('hidden', !on);
+        }
+        function loadCachedState() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(CACHE_KEY));
+                if (!saved || !Array.isArray(saved.tasks)) return;
+                tasks = saved.tasks;
+                dataVersion = typeof saved.version === 'string' ? saved.version : '';
+                renderAll();
+            } catch (_) { localStorage.removeItem(CACHE_KEY); }
+        }
+        function saveCachedState() {
+            try { localStorage.setItem(CACHE_KEY, JSON.stringify({ version: dataVersion, tasks })); }
+            catch (_) { /* המטמון הוא שיפור ביצועים בלבד. */ }
+        }
+        async function fetchJson(url, options = {}) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+            try {
+                const response = await fetch(url, { ...options, signal: controller.signal });
+                const text = await response.text();
+                if (!response.ok || !text.trim().startsWith('{')) throw new Error('INVALID_SERVER_RESPONSE');
+                return JSON.parse(text);
+            } finally {
+                clearTimeout(timeout);
+            }
         }
         function esc(s) {
             return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -189,14 +218,13 @@
         async function apiPost(payload) {
             let result;
             try {
-                const res = await fetch(API_URL, {
+                result = await fetchJson(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload)
                 });
-                result = await res.json();
             } catch (e) {
-                alert('שגיאת תקשורת : ' + e);
+                alert('לא ניתן לשמור את השינוי. בדוק את החיבור ונסה שוב.');
                 return { ok: false, error: String(e) };
             }
             if (!result || !result.ok) {
@@ -209,10 +237,17 @@
             if (isSyncing) return;
             isSyncing = true;
             try {
-                const res = await fetch(API_URL);
-                const data = await res.json();
-                if (data && data.ok) {
+                const url = new URL(API_URL);
+                url.searchParams.set('view', 'manager');
+                if (dataVersion) url.searchParams.set('version', dataVersion);
+                const data = await fetchJson(url, { cache: 'no-store' });
+                if (data && data.ok && data.unchanged) {
+                    dataVersion = data.version || dataVersion;
+                    setConnError(false);
+                } else if (data && data.ok && Array.isArray(data.tasks)) {
                     tasks = data.tasks;
+                    dataVersion = data.version || '';
+                    saveCachedState();
                     setConnError(false);
                     renderAll();
                 } else {
@@ -278,7 +313,29 @@
             btn.innerText = 'מוסיף...';
             const payload = { action: 'addBulk', lines };
             if (addPendingPhoto) payload.photoBase64 = addPendingPhoto;
-            await apiPost(payload);
+
+            // המשימה מוצגת מיד; השרת הוא עדיין מקור האמת ומאשר אותה ברקע.
+            const pendingIds = lines.map((_, index) => `pending-${Date.now()}-${index}`);
+            const firstOrder = maxActiveOrder_() + 1;
+            const now = new Date().toISOString();
+            const pendingTasks = lines.map((textHe, index) => ({
+                id: pendingIds[index], textHe, textEs: '', createdAt: now,
+                status: 'active', order: firstOrder + index, completedAt: '',
+                reasonText: '', reasonPhotoBase64: addPendingPhoto, requiresConfirmation: true
+            }));
+            tasks = tasks.concat(pendingTasks);
+            saveCachedState();
+            renderAll();
+
+            const result = await apiPost(payload);
+            if (!result || !result.ok) {
+                tasks = tasks.filter(task => !pendingIds.includes(task.id));
+                saveCachedState();
+                renderAll();
+                btn.disabled = false;
+                btn.innerText = 'הוסף משימות';
+                return;
+            }
             document.getElementById('task-input').value = '';
             document.getElementById('location-input').value = '';
             document.getElementById('add-photo-input').value = '';
@@ -470,12 +527,19 @@
                     ghostClass: 'sortable-ghost',
                     onEnd: async function () {
                         const ids = Array.from(listActive.children).map(li => li.dataset.id);
+                        const previousOrders = new Map(tasks.map(t => [t.id, t.order]));
                         ids.forEach((id, i) => {
                             const t = tasks.find(x => x.id === id);
                             if (t) t.order = i;
                         });
+                        saveCachedState();
                         const result = await apiPost({ action: 'reorder', ids });
-                        if (!result || !result.ok) await syncFromCloud();
+                        if (!result || !result.ok) {
+                            tasks.forEach(t => { if (previousOrders.has(t.id)) t.order = previousOrders.get(t.id); });
+                            saveCachedState();
+                            renderAll();
+                            await syncFromCloud();
+                        }
                     }
                 });
             }
@@ -490,41 +554,57 @@
             if (!confirm('האם למחוק?')) return;
             const backup = tasks;
             tasks = tasks.filter(t => t.id !== id);
+            saveCachedState();
             renderAll();
             const result = await apiPost({ action: 'deleteTask', id });
-            if (!result || !result.ok) { tasks = backup; await syncFromCloud(); }
+            if (!result || !result.ok) { tasks = backup; saveCachedState(); renderAll(); await syncFromCloud(); }
         }
 
         async function confirmArchive(id) {
             const t = tasks.find(x => x.id === id);
+            const previousStatus = t && t.status;
             if (t) t.status = 'archived';
+            saveCachedState();
             renderAll();
             const result = await apiPost({ action: 'confirmArchive', id });
-            if (!result || !result.ok) await syncFromCloud();
+            if (!result || !result.ok) {
+                if (t) t.status = previousStatus;
+                saveCachedState(); renderAll(); await syncFromCloud();
+            }
         }
 
         async function resubmitTask(id) {
             const t = tasks.find(x => x.id === id);
+            const previousTask = t && { status: t.status, reasonText: t.reasonText, reasonPhotoBase64: t.reasonPhotoBase64, order: t.order };
             if (t) {
                 t.status = 'active';
                 t.reasonText = '';
                 t.reasonPhotoBase64 = '';
                 t.order = maxActiveOrder_() + 1;
             }
+            saveCachedState();
             renderAll();
             const result = await apiPost({ action: 'resubmitTask', id });
-            if (!result || !result.ok) await syncFromCloud();
+            if (!result || !result.ok) {
+                if (t && previousTask) Object.assign(t, previousTask);
+                saveCachedState(); renderAll(); await syncFromCloud();
+            }
         }
 
         async function undoHistory(id) {
             const t = tasks.find(x => x.id === id);
+            const previousTask = t && { status: t.status, completedAt: t.completedAt, order: t.order };
             if (t) {
                 t.status = 'active';
                 t.order = maxActiveOrder_() + 1;
             }
+            saveCachedState();
             renderAll();
             const result = await apiPost({ action: 'undoHistory', id });
-            if (!result || !result.ok) await syncFromCloud();
+            if (!result || !result.ok) {
+                if (t && previousTask) Object.assign(t, previousTask);
+                saveCachedState(); renderAll(); await syncFromCloud();
+            }
         }
 
         function toggleWorkerPreview() {
@@ -569,6 +649,7 @@
 
         async function previewMarkFixed(id) {
             tasks = tasks.filter(t => t.id !== id);
+            saveCachedState();
             renderAll();
             const result = await apiPost({ action: 'markFixed', id });
             if (!result || !result.ok) await syncFromCloud();
@@ -578,14 +659,20 @@
             const note = prompt('Que pasó? (Opcional)');
             if (note === null) return;
             tasks = tasks.filter(t => t.id !== id);
+            saveCachedState();
             renderAll();
             apiPost({ action: 'reportIssue', id, reasonTextEs: note.trim() }).then(result => {
                 if (!result || !result.ok) syncFromCloud();
             });
         }
 
-        window.onload = () => { syncFromCloud(); };
-        setInterval(syncFromCloud, 10000);
+        window.onload = () => { loadCachedState(); syncFromCloud(); };
+        setInterval(() => { if (document.visibilityState === 'visible') syncFromCloud(); }, SYNC_INTERVAL_MS);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') syncFromCloud();
+        });
+        window.addEventListener('focus', syncFromCloud);
+        window.addEventListener('online', syncFromCloud);
         // if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
     </script>
 </body>

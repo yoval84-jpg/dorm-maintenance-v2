@@ -61,20 +61,27 @@
         .first-task-card { border: 2px solid #0056b3; box-shadow: 0 4px 12px rgba(0,86,179,0.15); }
         .first-task-card .task-header { font-size: 20px; font-weight: bold; color: #0056b3; }
         .empty-state-box { text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px dashed #ccc; color: #555; margin-bottom: 15px; }
+        
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; box-sizing: border-box; }
+        .stats-list li { margin-bottom: 10px; font-size: 16px; }
     </style>
 </head>
 <body>
     <div class="container" id="manager-screen">
-        <button onclick="toggleWorkerPreview()" style="position: absolute; top: 15px; left: 15px; width: auto; padding: 5px 10px; background: #6c757d; border-radius: 5px; font-size: 12px; margin: 0;">תצוגת עובד</button>
-        <h2>ניהול תקלות</h2>
+        <div style="position: absolute; top: 15px; left: 15px; display: flex; gap: 5px;">
+            <button onclick="toggleWorkerPreview()" style="width: auto; padding: 5px 10px; background: #6c757d; border-radius: 5px; font-size: 12px; margin: 0;">📱 עובד</button>
+            <button onclick="openStatsModal()" style="width: auto; padding: 5px 10px; background: #6f42c1; border-radius: 5px; font-size: 12px; margin: 0;">📊 נתונים</button>
+        </div>
+        
+        <h2 style="margin-top: 10px;">ניהול תקלות</h2>
         <div id="conn-error" class="conn-error hidden">שגיאת חיבור. הנתונים לא מעודכנים.</div>
 
-        <!-- דאשבורד נתונים למנהל -->
-        <div style="display:flex; justify-content:space-between; text-align:center; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #dee2e6;">
+        <!-- דאשבורד נתונים למנהל (מרווח יותר, 3 עמודות) -->
+        <div style="display:flex; justify-content:space-around; text-align:center; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #dee2e6;">
             <div><strong id="stat-active" style="font-size:20px; color:#0056b3;">0</strong><br><span style="font-size:12px; color:#666;">מחכות לטיפול</span></div>
             <div><strong id="stat-pending" style="font-size:20px; color:#fd7e14;">0</strong><br><span style="font-size:12px; color:#666;">ממתינות לאישור</span></div>
             <div><strong id="stat-done" style="font-size:20px; color:#198754;">0</strong><br><span style="font-size:12px; color:#666;">טופלו היום</span></div>
-            <div><strong id="stat-avg" style="font-size:20px; color:#6f42c1;">0</strong><br><span style="font-size:12px; color:#666;">ימים בממוצע</span></div>
         </div>
 
         <textarea id="task-input" rows="3" placeholder="הכנס תיאור משימה (כל שורה תהפוך למשימה נפרדת)"></textarea>
@@ -110,6 +117,20 @@
             </div>
         </div>
         <ul id="list-history" class="manager-list hidden"></ul>
+    </div>
+
+    <!-- מודל ניתוח נתונים (סטטיסטיקה ללא שבתות) -->
+    <div class="modal hidden" id="stats-modal">
+        <div class="modal-content" style="text-align: right; direction: rtl;">
+            <h3 style="color: #6f42c1; margin-top:0; text-align: center;">📊 ניתוח נתונים</h3>
+            <ul class="stats-list" style="list-style: none; padding: 0; line-height: 1.8;">
+                <li>⏱️ <strong>זמן ממוצע למשימה:</strong> <span id="stat-avg-days" style="font-weight:bold; color:#0056b3;">0</span> <span style="font-size:14px;">ימים</span></li>
+                <li>📈 <strong>קצב ממוצע:</strong> <span id="stat-rate" style="font-weight:bold; color:#198754;">0</span> <span style="font-size:14px;">משימות ליום</span></li>
+                <li>✅ <strong>סך הכל השלמנו:</strong> <span id="stat-total-done" style="font-weight:bold;">0</span> <span style="font-size:14px;">משימות</span></li>
+            </ul>
+            <p style="font-size:11px; color:#888; text-align: center;">* הנתונים מחושבים לפי ימי עבודה (ללא שבתות).</p>
+            <button class="btn btn-gray" onclick="closeStatsModal()" style="width:100%; margin-top:10px;">סגור</button>
+        </div>
     </div>
 
     <!-- תצוגה מקדימה של העובד -->
@@ -269,6 +290,64 @@
             await syncFromCloud();
         }
 
+        // --- חישוב סטטיסטיקה ללא שבתות ---
+        function openStatsModal() {
+            const completed = tasks.filter(t => (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && t.completedAt && t.createdAt);
+            let totalWorkDays = 0;
+            let validTasks = 0;
+
+            completed.forEach(t => {
+                let start = new Date(t.createdAt);
+                let end = new Date(t.completedAt);
+                if (end < start) return;
+                
+                let diffMs = end - start;
+                let totalDays = diffMs / (1000 * 60 * 60 * 24);
+                
+                // חישוב שבתות בין התאריכים
+                let sats = 0;
+                let cur = new Date(start);
+                cur.setHours(0,0,0,0);
+                let endDay = new Date(end);
+                endDay.setHours(0,0,0,0);
+                while(cur <= endDay) {
+                    if(cur.getDay() === 6) sats++;
+                    cur.setDate(cur.getDate() + 1);
+                }
+                
+                let workDays = Math.max(0, totalDays - sats);
+                totalWorkDays += workDays;
+                validTasks++;
+            });
+
+            let avgDays = validTasks > 0 ? (totalWorkDays / validTasks).toFixed(1) : 0;
+            let rateText = "0";
+
+            if (validTasks > 0) {
+                let oldest = new Date(Math.min(...completed.map(t => new Date(t.createdAt).getTime())));
+                let now = new Date();
+                let totalSpan = (now - oldest) / (1000 * 60 * 60 * 24);
+                let satsSpan = 0;
+                let c = new Date(oldest);
+                c.setHours(0,0,0,0);
+                while(c <= now) {
+                    if(c.getDay() === 6) satsSpan++;
+                    c.setDate(c.getDate() + 1);
+                }
+                let workSpan = Math.max(1, totalSpan - satsSpan);
+                rateText = (validTasks / workSpan).toFixed(1);
+            }
+            
+            document.getElementById('stat-avg-days').innerText = avgDays;
+            document.getElementById('stat-rate').innerText = rateText;
+            document.getElementById('stat-total-done').innerText = validTasks;
+            document.getElementById('stats-modal').classList.remove('hidden');
+        }
+
+        function closeStatsModal() {
+            document.getElementById('stats-modal').classList.add('hidden');
+        }
+
         function renderManager() {
             const listActive = document.getElementById('list-active');
             const listPending = document.getElementById('list-pending');
@@ -294,29 +373,16 @@
             
             const countDone = doneTodayTasks.length;
 
-            const completedTasks = tasks.filter(t => t.status === 'archived' || t.status === 'pending_confirm').filter(t => t.completedAt && t.createdAt);
-            let totalTime = 0; let validCount = 0;
-            completedTasks.forEach(t => {
-                const created = new Date(t.createdAt).getTime();
-                const completed = new Date(t.completedAt).getTime();
-                if (completed > created) {
-                    totalTime += (completed - created);
-                    validCount++;
-                }
-            });
-            const avgDays = validCount > 0 ? (totalTime / validCount / (1000 * 60 * 60 * 24)).toFixed(1) : 0;
-
             const statActive = document.getElementById('stat-active');
             const statPending = document.getElementById('stat-pending');
             const statDone = document.getElementById('stat-done');
-            const statAvg = document.getElementById('stat-avg');
+            
             if(statActive) statActive.innerText = active.length;
             if(statPending) statPending.innerText = pending.length;
             if(statDone) statDone.innerText = countDone;
-            if(statAvg) statAvg.innerText = avgDays;
 
             if (active.length === 0) {
-                emptyBox.innerHTML = `<strong>וואו! נגמרו המשימות</strong><br><span style="font-size:13px; color:#666;">שווה לערוך בדיקה מה עוד צריך תיקון או להעלות משימות רוחב.</span>`;
+                emptyBox.innerHTML = `<strong>כל הכבוד! נגמרו המשימות הדחופות!</strong><br><span style="font-size:13px; color:#666;">יש משימות רוחב?</span>`;
                 emptyBox.classList.remove('hidden');
                 listActive.innerHTML = '';
             } else {
@@ -341,6 +407,7 @@
                 }).join('');
             }
 
+            // עדכון רשימת ממתינות לאישור עם כפתור "החזר לטיפול"
             listPending.innerHTML = pending.map(task => {
                 const waitText = getDaysWaitingHe(task);
                 const textWithEmoji = applySmartEmojis(esc(task.textHe));
@@ -356,16 +423,20 @@
                 if (isIssue) {
                     html += `<div class="row-actions-col">
                         <button class="btn-red thumb-btn" style="background:#dc3545;color:#fff;" onclick="deleteTask('${task.id}')">🗑️</button>
-                        <button class="btn-gray thumb-btn" style="background:#6c757d;color:#fff;" onclick="resubmitTask('${task.id}')">🔄</button>
+                        <button class="btn-gray thumb-btn" title="החזר לטיפול" style="background:#6c757d;color:#fff;" onclick="resubmitTask('${task.id}')">🔄</button>
                     </div>`;
                 } else {
-                    html += `<button class="btn-green" style="width:auto; padding:8px 15px; margin:0;" onclick="confirmArchive('${task.id}')">אשר והעבר לארכיון</button>`;
+                    // כפתור אישור ירוק ולמטה כפתור החזר לטיפול כתום
+                    html += `<div style="display:flex; flex-direction:column; gap:5px; min-width:110px;">
+                        <button class="btn-green" style="width:100%; padding:8px; margin:0; font-size:14px;" onclick="confirmArchive('${task.id}')">✅ אישור</button>
+                        <button class="btn-gray" style="width:100%; padding:8px; margin:0; font-size:14px; background:#fd7e14;" onclick="resubmitTask('${task.id}')">↩️ החזר לטיפול</button>
+                    </div>`;
                 }
                 html += `</li>`;
                 return html;
             }).join('');
 
-            // רשימת טופלו היום (קריאה בלבד)
+            // רשימת טופלו היום
             listDoneToday.innerHTML = doneTodayTasks.map(task => {
                 const waitText = getDaysWaitingHe(task);
                 const textWithEmoji = applySmartEmojis(esc(task.textHe));
@@ -377,6 +448,7 @@
                 return `<li style="background:#f8f9fa; border:1px solid #ddd; opacity: 0.9;">
                     <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
                     <span class="badge ${badgeClass}" style="margin-top:5px;">${badgeText}</span></div>
+                    <button class="btn-gray thumb-btn" title="החזר לרשימה הפעילה" style="background:#6c757d;color:#fff; align-self:center;" onclick="undoHistory('${task.id}')">↩️</button>
                 </li>`;
             }).join('');
 
@@ -386,7 +458,7 @@
                 return `<li style="background:#fff; border:1px solid #ddd;">
                     <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
                     <span class="badge badge-green" style="margin-top:5px;">הושלם</span></div>
-                    <button class="btn-gray thumb-btn" style="background:#6c757d;color:#fff;" onclick="undoHistory('${task.id}')">↩️</button>
+                    <button class="btn-gray thumb-btn" title="החזר לרשימה הפעילה" style="background:#6c757d;color:#fff; align-self:center;" onclick="undoHistory('${task.id}')">↩️</button>
                 </li>`;
             }).join('');
 
@@ -468,7 +540,7 @@
             const active = tasks.filter(t => t.status === 'active').sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
             if (active.length === 0) {
                 list.innerHTML = `<div style="text-align:center; padding:20px; background:#fff; border-radius:8px; border:1px solid #ddd; color:#198754; font-weight:bold;">
-                    כל הכבוד! נגמרו המשימות הדחופות!<br><span style="font-size:12px; color:#666; font-weight:normal;">רק צריך לראות שחיים עומד בקצב</span>
+                    כל הכבוד! נגמרו המשימות הדחופות!
                 </div>`;
                 return;
             }

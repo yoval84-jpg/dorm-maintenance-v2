@@ -11,6 +11,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Reparaciones">
+    
+    <!-- ספריית הקונפטי (עם תוספת גרסה קטנה כדי למנוע שמירה בזיכרון הישן) -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js?v=2"></script>
+    
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -87,17 +91,17 @@
     </div>
 
     <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbyWWUGpf8LXSl8e3So7D6NLdD6Q9jZVezNG5v1lBuf3_KpO3rv_S2CZWYiNx4AmOrQQ0A/exec";
+        const API_URL = "https://script.google.com/macros/s/AKfycbwrvp2zOFWcv1DFOnRen--bG3qEesLdvAnubkVdXbO3ZayrzDfI_EBH_qc-chR6ZVpUIg/exec";
         let tasks = [];
         let currentTaskId = null;
         let pendingPhoto = null;
         let isSyncing = false;
+        let prevActiveCount = -1; // משתנה למעקב אחרי כמות המשימות להפעלת קונפטי סיום
 
         function setConnError(on) {
             document.getElementById('conn-error').classList.toggle('hidden', !on);
         }
 
-        // פונקציית אימוג'ים חכמים
         function applySmartEmojis(text) {
             let res = text;
             if (/(מים|נזילה|פיצוץ|ברז|אסלה|שירותים|מקלחת|כיור|ביוב|צינור)/i.test(res)) res = '💧 ' + res;
@@ -162,35 +166,35 @@
             const activeTasks = tasks.filter(t => t.status === 'active')
                 .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 
-            // חישוב שעת ההתחלה של היום (7:30 בבוקר)
             const today730 = new Date();
             today730.setHours(7, 30, 0, 0);
             if (new Date() < today730) today730.setDate(today730.getDate() - 1);
 
-            // המשימות שטופלו היום בלבד
             const doneTodayTasks = tasks.filter(t => 
                 (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && 
                 t.completedAt && new Date(t.completedAt) >= today730
             ).sort((a,b)=> new Date(b.completedAt) - new Date(a.completedAt));
 
             const countDone = doneTodayTasks.length;
-
-            // עדכון המספרים בדאשבורד
             const elActive = document.getElementById('w-stat-active');
             const elDone = document.getElementById('w-stat-done');
             if (elActive) elActive.innerText = activeTasks.length;
             if (elDone) elDone.innerText = countDone;
 
             if (activeTasks.length === 0) {
+                // בדיקה אם זה עתה הגענו ל-0 משימות כדי להפעיל קונפטי גדול
+                if (prevActiveCount > 0 && typeof confetti !== 'undefined') {
+                    confetti({ particleCount: 300, spread: 120, origin: { y: 0.5 }, zIndex: 9999 });
+                }
                 list.innerHTML = `<div style="text-align:center; padding:25px; background:#f8f9fa; border-radius:8px; border:1px solid #ddd; color:#198754; font-weight:bold; font-size:16px;">
-                    כל הכבוד! נגמרו המשימות הדחופות!<br><span style="font-size:13px; color:#666; font-weight:normal;">כל הכבוד, רק צריך לראות שחיים עומד בקצב</span>
+                    כל הכבוד! נגמרו המשימות הדחופות!
                 </div>`;
             } else {
                 list.innerHTML = activeTasks.map((task, index) => {
                     const isFirst = index === 0;
                     const daysText = getDaysWaiting(task);
                     const text = task.textEs || task.textHe;
-                    const textWithEmoji = applySmartEmojis(esc(text)); // הוספת אימוג'י
+                    const textWithEmoji = applySmartEmojis(esc(text)); 
 
                     const photoHtml = task.reasonPhotoBase64
                         ? `<img src="${task.reasonPhotoBase64}" class="thumb" style="margin-top:10px;">`
@@ -213,8 +217,10 @@
                         </div>`;
                 }).join('');
             }
+            
+            // עדכון המשתנה אחרי הבדיקה
+            prevActiveCount = activeTasks.length;
 
-            // עדכון רשימת טופלו היום (לעובד) בתצוגת קריאה בלבד
             listDoneToday.innerHTML = doneTodayTasks.map(task => {
                 const text = task.textEs || task.textHe;
                 const textWithEmoji = applySmartEmojis(esc(text));
@@ -238,7 +244,20 @@
         }
 
         async function markFixed(id) {
+            // הפעלת קונפטי נקודתי בלחיצה על משימה אחת
+            if (typeof confetti !== 'undefined') {
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 },
+                    zIndex: 9999
+                });
+            }
+
+            // העלמה מקומית מיידית לצורך תחושת מהירות
+            tasks = tasks.filter(t => t.id !== id);
             renderWorker();
+            
             const result = await apiPost({ action: 'markFixed', id });
             if (!result || !result.ok) await syncFromCloud(); 
         }
@@ -283,7 +302,10 @@
             btn.innerText = 'Guardando...';
             const payload = { action: 'reportIssue', id: currentTaskId, reasonTextEs };
             if (pendingPhoto) payload.reasonPhotoBase64 = pendingPhoto;
+            
+            tasks = tasks.filter(t => t.id !== currentTaskId);
             renderWorker();
+            
             closeModal();
             btn.disabled = false;
             btn.innerText = 'Guardar';

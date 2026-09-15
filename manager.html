@@ -95,6 +95,13 @@
         <h3 style="border-bottom: 2px solid #eee; padding-bottom: 5px; margin-top: 30px; color: #fd7e14;">ממתינות לאישור / בעיות מדווחות</h3>
         <ul id="list-pending" class="manager-list"></ul>
 
+        <!-- משימות שבוצעו היום -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-top: 30px; padding-bottom: 5px;">
+            <h3 style="margin: 0; color: #198754; border: none; padding: 0;">טופלו היום</h3>
+            <button class="toggle-history-btn" onclick="document.getElementById('list-done-today').classList.toggle('hidden')">⬇️</button>
+        </div>
+        <ul id="list-done-today" class="manager-list hidden"></ul>
+
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-top: 30px; padding-bottom: 5px;">
             <h3 style="margin: 0; color: #6c757d; border: none; padding: 0;">היסטוריה </h3>
             <div style="display: flex; gap:10px;">
@@ -114,7 +121,7 @@
     </div>
 
     <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbyWWUGpf8LXSl8e3So7D6NLdD6Q9jZVezNG5v1lBuf3_KpO3rv_S2CZWYiNx4AmOrQQ0A/exec";
+        const API_URL = "https://script.google.com/macros/s/AKfycbwrvp2zOFWcv1DFOnRen--bG3qEesLdvAnubkVdXbO3ZayrzDfI_EBH_qc-chR6ZVpUIg/exec";
         let tasks = [];
         let activeSortable = null;
         let isSyncing = false;
@@ -184,9 +191,7 @@
                 const res = await fetch(API_URL);
                 const data = await res.json();
                 if (data && data.ok) {
-                    // שמירת המשימות הזמניות שעדיין נשמרות כדי שהסנכרון לא ידרוס אותן
-                    const tempTasks = tasks.filter(t => t.isTemp);
-                    tasks = [...data.tasks, ...tempTasks];
+                    tasks = data.tasks;
                     setConnError(false);
                     renderAll();
                 } else {
@@ -237,7 +242,6 @@
             reader.readAsDataURL(file);
         });
 
-        // פונקציית הוספה מהירה וחדשה (Optimistic UI)
         async function addTasks() {
             let input = document.getElementById('task-input').value.trim();
             const location = document.getElementById('location-input').value.trim();
@@ -246,47 +250,29 @@
             if (location) {
                 input = input.split('\n').map(l => `[${location}] ${l}`).join('\n');
             }
+
             const lines = input.split('\n').map(l => l.trim()).filter(l => l !== '');
-
-            // 1. יצירת משימות זמניות למסך
-            const tempTasks = lines.map((line, index) => ({
-                id: 'temp-' + Date.now() + '-' + index,
-                textHe: line,
-                status: 'active',
-                createdAt: new Date().toISOString(),
-                isTemp: true,
-                reasonPhotoBase64: addPendingPhoto || ''
-            }));
-            
-            // 2. הוספה למערכת המקומית ורענון מיידי
-            tasks = [...tasks, ...tempTasks];
-            renderAll();
-
-            // 3. ניקוי הטפסים מיד כדי שתוכל להמשיך להקליד
+            const btn = document.getElementById('add-btn');
+            btn.disabled = true;
+            btn.innerText = 'מוסיף...';
+            const payload = { action: 'addBulk', lines };
+            if (addPendingPhoto) payload.photoBase64 = addPendingPhoto;
+            await apiPost(payload);
             document.getElementById('task-input').value = '';
             document.getElementById('location-input').value = '';
             document.getElementById('add-photo-input').value = '';
             document.getElementById('add-photo-preview-wrap').innerHTML = '';
             document.getElementById('add-photo-label').innerText = 'הוסף תמונה';
-            const photoToUpload = addPendingPhoto;
             addPendingPhoto = null;
-
-            // 4. שיגור מאחורי הקלעים לשרת
-            const payload = { action: 'addBulk', lines };
-            if (photoToUpload) payload.photoBase64 = photoToUpload;
-            
-            apiPost(payload).then(async (result) => {
-                // לאחר השמירה מסירים את המשימות הזמניות מהרשימה המקומית
-                const tempIds = tempTasks.map(t => t.id);
-                tasks = tasks.filter(t => !tempIds.includes(t.id));
-                // ומושכים את הנתונים האמיתיים מגוגל
-                await syncFromCloud();
-            });
+            btn.disabled = false;
+            btn.innerText = 'הוסף משימות';
+            await syncFromCloud();
         }
 
         function renderManager() {
             const listActive = document.getElementById('list-active');
             const listPending = document.getElementById('list-pending');
+            const listDoneToday = document.getElementById('list-done-today');
             const listHistory = document.getElementById('list-history');
             const emptyBox = document.getElementById('manager-empty-box');
 
@@ -300,10 +286,13 @@
             today730.setHours(7, 30, 0, 0);
             if (new Date() < today730) today730.setDate(today730.getDate() - 1);
 
-            const countDone = tasks.filter(t => 
+            // המשימות שטופלו היום בלבד
+            const doneTodayTasks = tasks.filter(t => 
                 (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && 
                 t.completedAt && new Date(t.completedAt) >= today730
-            ).length;
+            ).sort((a,b)=> new Date(b.completedAt) - new Date(a.completedAt));
+            
+            const countDone = doneTodayTasks.length;
 
             const completedTasks = tasks.filter(t => t.status === 'archived' || t.status === 'pending_confirm').filter(t => t.completedAt && t.createdAt);
             let totalTime = 0; let validCount = 0;
@@ -334,26 +323,18 @@
                 emptyBox.classList.add('hidden');
                 listActive.innerHTML = active.map(task => {
                     const waitDays = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-                    const isTemp = task.isTemp;
-                    const isRedAlert = waitDays > 3 && !isTemp; 
-                    
-                    let cardStyle = isRedAlert ? 'background:#fff5f5; border:1px solid #ffcaca;' : 'background:#fff; border:1px solid #ddd;';
-                    if (isTemp) cardStyle += ' opacity: 0.6; pointer-events: none; border: 1px dashed #999;'; 
-                    
-                    const waitText = isTemp ? 'שומר בשרת...' : getDaysWaitingHe(task);
+                    const isRedAlert = waitDays > 3; 
+                    const cardStyle = isRedAlert ? 'background:#fff5f5; border:1px solid #ffcaca;' : 'background:#fff; border:1px solid #ddd;';
+                    const waitText = getDaysWaitingHe(task);
                     const textWithEmoji = applySmartEmojis(esc(task.textHe)); 
                     
                     let html = `<li data-id="${task.id}" style="${cardStyle}">
-                        <div>
-                            <strong>${textWithEmoji}</strong>
-                            ${isTemp ? '<span style="margin-right:8px; font-size:12px; color:#ff9800; font-weight:bold;">⏳ בביצוע...</span>' : ''}
-                            <br>
-                            <span style="font-size:12px; color:${isRedAlert ? '#dc3545' : '#666'}; font-weight:${isRedAlert ? 'bold' : 'normal'};">המתנה: ${esc(waitText)}</span>`;
-                    if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px; opacity: ${isTemp ? '0.7' : '1'};">`;
+                        <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:${isRedAlert ? '#dc3545' : '#666'}; font-weight:${isRedAlert ? 'bold' : 'normal'};">המתנה: ${esc(waitText)}</span>`;
+                    if (task.reasonPhotoBase64) html += `<br><img src="${task.reasonPhotoBase64}" class="task-img" style="max-width:120px;">`;
                     html += `</div>
                         <div class="row-actions-col">
-                            <button class="btn-red thumb-btn" style="background:${isTemp ? '#ccc' : '#dc3545'};color:#fff;" ${isTemp ? 'disabled' : ''} onclick="deleteTask('${task.id}')">🗑️</button>
-                            <div class="drag-handle" style="${isTemp ? 'color:#eee;' : ''}">≡</div>
+                            <button class="btn-red thumb-btn" style="background:#dc3545;color:#fff;" onclick="deleteTask('${task.id}')">🗑️</button>
+                            <div class="drag-handle">≡</div>
                         </div>
                     </li>`;
                     return html;
@@ -382,6 +363,21 @@
                 }
                 html += `</li>`;
                 return html;
+            }).join('');
+
+            // רשימת טופלו היום (קריאה בלבד)
+            listDoneToday.innerHTML = doneTodayTasks.map(task => {
+                const waitText = getDaysWaitingHe(task);
+                const textWithEmoji = applySmartEmojis(esc(task.textHe));
+                let badgeText = 'הושלם';
+                let badgeClass = 'badge-green';
+                if (task.status === 'pending_confirm') { badgeText = 'ממתין לאישור'; badgeClass = 'badge-orange'; }
+                if (task.status === 'issue_pending') { badgeText = 'דווחה בעיה'; badgeClass = 'badge-red'; }
+                
+                return `<li style="background:#f8f9fa; border:1px solid #ddd; opacity: 0.9;">
+                    <div><strong>${textWithEmoji}</strong><br><span style="font-size:12px; color:#666;">המתנה: ${esc(waitText)}</span><br>
+                    <span class="badge ${badgeClass}" style="margin-top:5px;">${badgeText}</span></div>
+                </li>`;
             }).join('');
 
             listHistory.innerHTML = history.map(task => {

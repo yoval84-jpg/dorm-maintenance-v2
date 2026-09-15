@@ -11,6 +11,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Reparaciones">
+    
+    <!-- ספריית הקונפטי -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -66,6 +70,13 @@
         </div>
 
         <div id="worker-list"></div>
+
+        <!-- משימות שבוצעו היום (לעובד) -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-top: 30px; padding-bottom: 5px;">
+            <h3 style="margin: 0; color: #198754; border: none; padding: 0; font-size: 18px;">Hecho hoy (טופלו היום)</h3>
+            <button style="background: transparent; color: #333; font-size: 22px; width: auto; margin: 0; padding: 5px; border: none; box-shadow: none;" onclick="document.getElementById('worker-done-today').classList.toggle('hidden')">⬇️</button>
+        </div>
+        <div id="worker-done-today" class="hidden"></div>
     </div>
 
     <div class="modal hidden" id="cant-fix-modal">
@@ -80,7 +91,7 @@
     </div>
 
     <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbyWWUGpf8LXSl8e3So7D6NLdD6Q9jZVezNG5v1lBuf3_KpO3rv_S2CZWYiNx4AmOrQQ0A/exec";
+        const API_URL = "https://script.google.com/macros/s/AKfycbwrvp2zOFWcv1DFOnRen--bG3qEesLdvAnubkVdXbO3ZayrzDfI_EBH_qc-chR6ZVpUIg/exec";
         let tasks = [];
         let currentTaskId = null;
         let pendingPhoto = null;
@@ -127,8 +138,7 @@
                 const res = await fetch(API_URL);
                 const data = await res.json();
                 if (data && data.ok) {
-                    const tempTasks = tasks.filter(t => t.isTemp);
-                    tasks = [...data.tasks, ...tempTasks];
+                    tasks = data.tasks;
                     setConnError(false);
                     renderWorker();
                 } else {
@@ -151,6 +161,8 @@
 
         function renderWorker() {
             const list = document.getElementById('worker-list');
+            const listDoneToday = document.getElementById('worker-done-today');
+
             const activeTasks = tasks.filter(t => t.status === 'active')
                 .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 
@@ -159,11 +171,13 @@
             today730.setHours(7, 30, 0, 0);
             if (new Date() < today730) today730.setDate(today730.getDate() - 1);
 
-            // ספירת משימות שטופלו היום
-            const countDone = tasks.filter(t => 
+            // המשימות שטופלו היום בלבד
+            const doneTodayTasks = tasks.filter(t => 
                 (t.status === 'archived' || t.status === 'pending_confirm' || t.status === 'issue_pending') && 
                 t.completedAt && new Date(t.completedAt) >= today730
-            ).length;
+            ).sort((a,b)=> new Date(b.completedAt) - new Date(a.completedAt));
+
+            const countDone = doneTodayTasks.length;
 
             // עדכון המספרים בדאשבורד
             const elActive = document.getElementById('w-stat-active');
@@ -175,31 +189,46 @@
                 list.innerHTML = `<div style="text-align:center; padding:25px; background:#f8f9fa; border-radius:8px; border:1px solid #ddd; color:#198754; font-weight:bold; font-size:16px;">
                     כל הכבוד! נגמרו המשימות הדחופות!<br><span style="font-size:13px; color:#666; font-weight:normal;">כל הכבוד, רק צריך לראות שחיים עומד בקצב</span>
                 </div>`;
-                return;
-            }
-            list.innerHTML = activeTasks.map((task, index) => {
-                const isFirst = index === 0;
-                const daysText = getDaysWaiting(task);
-                const text = task.textEs || task.textHe;
-                const textWithEmoji = applySmartEmojis(esc(text)); // הוספת אימוג'י
+            } else {
+                list.innerHTML = activeTasks.map((task, index) => {
+                    const isFirst = index === 0;
+                    const daysText = getDaysWaiting(task);
+                    const text = task.textEs || task.textHe;
+                    const textWithEmoji = applySmartEmojis(esc(text)); // הוספת אימוג'י
 
-                const photoHtml = task.reasonPhotoBase64
-                    ? `<img src="${task.reasonPhotoBase64}" class="thumb" style="margin-top:10px;">`
-                    : '';
+                    const photoHtml = task.reasonPhotoBase64
+                        ? `<img src="${task.reasonPhotoBase64}" class="thumb" style="margin-top:10px;">`
+                        : '';
+                    return `
+                        <div class="task-card ${isFirst ? 'first-task-card' : ''}">
+                            <div class="task-header" ${isFirst ? '' : `onclick="toggleCard('${task.id}')"`}>
+                                <div>
+                                    ${textWithEmoji}<br>
+                                    <span style="font-size: 13px; color: #888; font-weight: normal;"> ${daysText}</span>
+                                    ${isFirst ? photoHtml : ''}
+                                </div>
+                                ${isFirst ? '' : '<span>▼</span>'}
+                            </div>
+                            ${!isFirst && task.reasonPhotoBase64 ? `<div style="padding:0 15px;">${photoHtml}</div>` : ''}
+                            <div class="task-actions ${isFirst ? '' : 'hidden'}" id="actions-${task.id}">
+                                <button class="btn btn-green" onclick="markFixed('${task.id}')">✅ Reparado</button>
+                                <button class="btn btn-red" onclick="openCantFix('${task.id}')">❌ No se puede</button>
+                            </div>
+                        </div>`;
+                }).join('');
+            }
+
+            // עדכון רשימת טופלו היום (לעובד) בתצוגת קריאה בלבד
+            listDoneToday.innerHTML = doneTodayTasks.map(task => {
+                const text = task.textEs || task.textHe;
+                const textWithEmoji = applySmartEmojis(esc(text));
                 return `
-                    <div class="task-card ${isFirst ? 'first-task-card' : ''}">
-                        <div class="task-header" ${isFirst ? '' : `onclick="toggleCard('${task.id}')"`}>
+                    <div class="task-card" style="opacity: 0.7; margin-bottom: 8px;">
+                        <div class="task-header" style="cursor: default; padding: 12px;">
                             <div>
                                 ${textWithEmoji}<br>
-                                <span style="font-size: 13px; color: #888; font-weight: normal;"> ${daysText}</span>
-                                ${isFirst ? photoHtml : ''}
+                                <span style="font-size: 13px; color: #198754; font-weight: bold;">✓ Completado</span>
                             </div>
-                            ${isFirst ? '' : '<span>▼</span>'}
-                        </div>
-                        ${!isFirst && task.reasonPhotoBase64 ? `<div style="padding:0 15px;">${photoHtml}</div>` : ''}
-                        <div class="task-actions ${isFirst ? '' : 'hidden'}" id="actions-${task.id}">
-                            <button class="btn btn-green" onclick="markFixed('${task.id}')">✅ Reparado</button>
-                            <button class="btn btn-red" onclick="openCantFix('${task.id}')">❌ No se puede</button>
                         </div>
                     </div>`;
             }).join('');
@@ -212,9 +241,15 @@
             if (isHidden) target.classList.remove('hidden');
         }
 
-        // מחיקה אופטימית מקומית לעובד - מגיב בשנייה!
         async function markFixed(id) {
-            tasks = tasks.filter(t => t.id !== id);
+            // 🎉 הפעלת אנימציית קונפטי 🎉
+            confetti({
+                particleCount: 150,
+                spread: 80,
+                origin: { y: 0.6 },
+                zIndex: 9999
+            });
+
             renderWorker();
             const result = await apiPost({ action: 'markFixed', id });
             if (!result || !result.ok) await syncFromCloud(); 
@@ -253,7 +288,6 @@
             reader.readAsDataURL(file);
         });
 
-        // עדכון אופטימי גם בדיווח על בעיה
         async function saveCantFix() {
             const reasonTextEs = document.getElementById('worker-note').value.trim();
             const btn = document.getElementById('save-modal-btn');
@@ -261,12 +295,8 @@
             btn.innerText = 'Guardando...';
             const payload = { action: 'reportIssue', id: currentTaskId, reasonTextEs };
             if (pendingPhoto) payload.reasonPhotoBase64 = pendingPhoto;
-            
-            // מחיקה מיידית מהמסך
-            tasks = tasks.filter(t => t.id !== currentTaskId);
             renderWorker();
             closeModal();
-            
             btn.disabled = false;
             btn.innerText = 'Guardar';
             const result = await apiPost(payload);
